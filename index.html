@@ -50,7 +50,15 @@
 
   /* ---------- Auth screen ---------- */
   .auth-wrap{min-height:100vh;display:flex;flex-direction:column;background:var(--surface);position:relative;overflow:hidden}
-  .auth-glow{position:absolute;top:-160px;left:50%;transform:translateX(-50%);width:560px;height:560px;border-radius:50%;background:radial-gradient(circle,rgba(var(--accent-rgb),.28) 0%,transparent 72%);pointer-events:none}
+  .auth-glow{
+    position:absolute;top:-160px;left:50%;width:560px;height:560px;border-radius:50%;
+    background:radial-gradient(circle,rgba(var(--accent-rgb),.32) 0%,transparent 72%);
+    pointer-events:none;transform:translateX(-50%) scale(1);
+    animation:glow-drift 14s ease-in-out infinite, glow-hue 10s ease-in-out infinite;
+  }
+  @keyframes glow-drift{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-46%) scale(1.15)}}
+  @keyframes glow-hue{0%,100%{filter:hue-rotate(-18deg)}50%{filter:hue-rotate(18deg)}}
+  @media (prefers-reduced-motion:reduce){ .auth-glow{animation:none} }
   .auth-main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;z-index:1}
   .auth-card{width:100%;max-width:360px;background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:30px 28px;box-shadow:0 8px 28px var(--shadow)}
   .auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
@@ -108,10 +116,21 @@
 
   .sidebar-add{
     margin-top:2px;display:flex;align-items:center;justify-content:center;gap:7px;
-    background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;
+    color:var(--accent-ink);border:none;border-radius:9px;
     padding:10px 12px;font-weight:700;font-size:13.5px;
   }
   .sidebar-add:hover{filter:brightness(1.08)}
+  .sidebar-add, .btn.primary, .tour-next{
+    background:linear-gradient(120deg,#4C8DFF,#6A5CFF,#3FC1E0,#4C8DFF);
+    background-size:300% 300%;animation:grad-flow 9s ease infinite;
+  }
+  @keyframes grad-flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  @media (prefers-reduced-motion:reduce){ .sidebar-add,.btn.primary,.tour-next{animation:none;background-position:0% 50%} }
+  .brand-grad-a{stop-color:#4C8DFF;animation:brand-grad-a 9s ease infinite}
+  .brand-grad-b{stop-color:#3FC1E0;animation:brand-grad-b 9s ease infinite}
+  @keyframes brand-grad-a{0%,100%{stop-color:#4C8DFF}50%{stop-color:#6A5CFF}}
+  @keyframes brand-grad-b{0%,100%{stop-color:#3FC1E0}50%{stop-color:#4C8DFF}}
+  @media (prefers-reduced-motion:reduce){ .brand-grad-a,.brand-grad-b{animation:none} }
 
   .sidebar-stat{
     padding:14px;border-radius:10px;background:var(--surface-sunken);
@@ -232,7 +251,7 @@
   .toolbar .spacer{flex:1}
   .btn{background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;color:var(--ink-600)}
   .btn:hover{color:var(--ink-900);border-color:var(--border-strong)}
-  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);transition:filter .15s,box-shadow .15s}
+  .btn.primary{color:var(--accent-ink);border-color:var(--accent);transition:filter .15s,box-shadow .15s}
   .btn.primary:hover{filter:brightness(1.08);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.22)}
   .btn.danger{color:var(--loss);border-color:var(--loss-soft)}
   .btn.danger:hover{background:var(--loss-soft)}
@@ -369,7 +388,7 @@
   .tour-actions{display:flex;justify-content:space-between;align-items:center;gap:10px}
   .tour-skip{background:none;border:none;color:var(--ink-400);font-size:12px;font-weight:600;padding:0}
   .tour-skip:hover{color:var(--ink-900)}
-  .tour-next{background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700}
+  .tour-next{color:var(--accent-ink);border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700}
   .tour-next:hover{filter:brightness(1.08)}
 
   @media (max-width:900px){
@@ -395,13 +414,21 @@
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" class="brand-grad-a"/>
+      <stop offset="100%" class="brand-grad-b"/>
+    </linearGradient>
+  </defs>
+</svg>
 
 <div class="auth-wrap" id="authScreen">
   <div class="auth-glow"></div>
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div class="auth-toggle" id="authToggle">
@@ -435,7 +462,7 @@
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div style="margin-bottom:16px">
@@ -457,7 +484,7 @@
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div style="margin-bottom:16px">
@@ -492,7 +519,7 @@
 <div class="app" id="appRoot">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
     </div>
     <div class="sidebar-user" id="sidebarUser"></div>
@@ -510,7 +537,7 @@
   <div class="topbar" id="topbar">
     <div class="topbar-scroll">
       <div class="brand">
-        <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="nav" id="navMobile" style="flex-direction:row"></div>
     </div>
@@ -744,7 +771,11 @@
           </div>
         </div>
         <div class="field"><label for="tNotes">What happened</label><textarea id="tNotes" placeholder="Setup, what went right or wrong, what you'd repeat…"></textarea></div>
-        <div class="field-hint">Screenshots are added from the trade's detail view — double-click it in the log after saving.</div>
+        <div class="field">
+          <label>Chart screenshots</label>
+          <div class="shot-gallery" id="formShotGallery"></div>
+          <input type="file" id="formShotFile" accept="image/*" multiple style="display:none">
+        </div>
       </fieldset>
 
       <div class="drawer-actions">
@@ -1565,14 +1596,61 @@
 
   /* ===================== trade form drawer ===================== */
   var tOutcome = 'win';
+  var formExistingShots = [];
+  var formPendingShots = [];
+  var formRemovedShotIds = [];
   function setOutcomeUI(){
     document.querySelectorAll('#outcomeSeg button').forEach(function(b){
       b.classList.toggle('active', b.getAttribute('data-outcome')===tOutcome);
     });
   }
+  function renderFormShotGallery(){
+    var html = '';
+    formExistingShots.forEach(function(s){
+      html += '<div class="shot-gallery-item"><img src="'+s.url+'" data-zoom="'+s.url+'"><button type="button" class="shot-remove" data-remove-existing="'+s.id+'">&times;</button></div>';
+    });
+    formPendingShots.forEach(function(p,i){
+      html += '<div class="shot-gallery-item"><img src="'+p.previewUrl+'" data-zoom="'+p.previewUrl+'"><button type="button" class="shot-remove" data-remove-pending="'+i+'">&times;</button></div>';
+    });
+    html += '<button type="button" class="shot-add-tile" id="formShotAddTile" title="Add screenshot"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>';
+    var gallery = document.getElementById('formShotGallery');
+    gallery.innerHTML = html;
+    document.getElementById('formShotAddTile').addEventListener('click', function(){ document.getElementById('formShotFile').click(); });
+    gallery.querySelectorAll('[data-remove-existing]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var id = btn.getAttribute('data-remove-existing');
+        formExistingShots = formExistingShots.filter(function(s){ return s.id!==id; });
+        formRemovedShotIds.push(id);
+        renderFormShotGallery();
+      });
+    });
+    gallery.querySelectorAll('[data-remove-pending]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute('data-remove-pending'),10);
+        formPendingShots.splice(idx,1);
+        renderFormShotGallery();
+      });
+    });
+    gallery.querySelectorAll('[data-zoom]').forEach(function(img){
+      img.addEventListener('click', function(){ openLightbox(img.getAttribute('data-zoom')); });
+    });
+  }
   function openTradeForm(trade){
     var form = document.getElementById('tradeForm');
     form.reset();
+    formPendingShots = [];
+    formRemovedShotIds = [];
+    formExistingShots = [];
+    renderFormShotGallery();
+    if(trade){
+      sb.from('trade_screenshots').select('*').eq('trade_id', trade.id).order('created_at',{ascending:true}).then(function(res){
+        formExistingShots = res.data || [];
+        renderFormShotGallery();
+        if(formExistingShots.length && document.getElementById('notesFieldset').hidden) toggleSection('notes');
+      });
+    }
     document.getElementById('tradeId').value = trade ? trade.id : '';
     document.getElementById('drawerTitle').textContent = trade ? 'Edit trade' : 'New trade';
     document.getElementById('deleteTradeBtn').style.display = trade ? 'block':'none';
@@ -1947,7 +2025,6 @@
     renderSidebarUser();
     activeTab = 'overview';
     switchTab('overview');
-    maybeStartTour();
   }
 
   /* ===================== product tour ===================== */
@@ -1960,11 +2037,6 @@
     {type:'center', title:"You're all set", text:'Replay this tour anytime from Data → Account.'}
   ];
   var tourIndex = 0;
-  function maybeStartTour(){
-    var seen = false;
-    try{ seen = localStorage.getItem('tt_tour_seen')==='1'; }catch(e){}
-    if(!seen) setTimeout(startTour, 500);
-  }
   function startTour(){
     tourIndex = 0;
     showTourStep();
@@ -1975,7 +2047,6 @@
   function endTour(){
     clearTourHighlight();
     document.getElementById('tourTooltip').style.display = 'none';
-    try{ localStorage.setItem('tt_tour_seen','1'); }catch(e){}
   }
   function showTourStep(){
     clearTourHighlight();
@@ -2137,6 +2208,7 @@
       closeOnboarding();
       document.getElementById('appLoading').style.display = 'flex';
       await finishEnteringApp();
+      setTimeout(startTour, 500);
     });
 
     document.getElementById('addTradeBtnSide').addEventListener('click', function(){ openTradeForm(null); });
@@ -2208,14 +2280,28 @@
           notes: document.getElementById('tNotes').value.trim()
         };
         var res;
+        var savedTradeId = id;
         if(id){
           res = await sb.from('trades').update(payload).eq('id', id);
         } else {
           payload.user_id = currentUser.id;
-          res = await sb.from('trades').insert(payload);
+          res = await sb.from('trades').insert(payload).select().single();
+          if(!res.error && res.data) savedTradeId = res.data.id;
         }
         if(res.error) throw res.error;
+
+        for(var ri=0; ri<formRemovedShotIds.length; ri++){
+          await sb.from('trade_screenshots').delete().eq('id', formRemovedShotIds[ri]);
+        }
+        for(var pi=0; pi<formPendingShots.length; pi++){
+          var shotUrl = await uploadScreenshot(formPendingShots[pi].blob);
+          if(shotUrl){
+            await sb.from('trade_screenshots').insert({trade_id: savedTradeId, url: shotUrl});
+          }
+        }
+
         await loadTrades();
+        await loadScreenshotCounts();
         closeTradeForm();
         toast(id ? 'Trade updated' : 'Trade added');
         refreshAll();
@@ -2223,6 +2309,16 @@
         toast('Could not save trade: '+(err.message||'unknown error'), 'loss');
       }
       saveBtn.disabled = false;
+    });
+    document.getElementById('formShotFile').addEventListener('change', function(e){
+      var files = Array.prototype.slice.call(e.target.files || []);
+      e.target.value = '';
+      files.forEach(function(file){
+        resizeImageToBlob(file, function(blob){
+          formPendingShots.push({blob:blob, previewUrl:URL.createObjectURL(blob)});
+          renderFormShotGallery();
+        });
+      });
     });
     document.getElementById('deleteTradeBtn').addEventListener('click', function(){
       var id = document.getElementById('tradeId').value;
