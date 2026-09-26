@@ -137,8 +137,9 @@
   .avatar-lg{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none;font-size:18px}
   .avatar-fallback{display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent);font-weight:700}
 
-  /* ---------- Mobile top bar ---------- */
+  /* ---------- Mobile top bar & bottom nav ---------- */
   .topbar{display:none}
+  .bottom-nav{display:none}
 
   /* ---------- Main ---------- */
   .main{flex:1;min-width:0;padding:30px 36px 60px}
@@ -383,17 +384,24 @@
     .table-wrap{display:none}
     .trade-cards{display:block}
     .topbar{
-      display:flex;align-items:center;gap:8px;
+      display:flex;align-items:center;justify-content:space-between;gap:8px;
       background:var(--surface-raised);border-bottom:1px solid var(--border);
-      padding:10px 12px;position:sticky;top:0;z-index:10;
+      padding:10px 14px;position:sticky;top:0;z-index:10;
     }
-    .topbar-scroll{display:flex;align-items:center;gap:6px;overflow-x:auto;flex:1;min-width:0}
-    .topbar .brand{padding-right:10px;margin-right:4px;border-right:1px solid var(--border);flex:none}
-    .topbar .nav-btn{white-space:nowrap;flex:none;width:auto}
     .topbar-avatar{flex:none;width:30px;height:30px;border-radius:50%;overflow:hidden;border:none;padding:0;background:var(--accent-soft);cursor:pointer}
     .topbar-avatar img{width:100%;height:100%;object-fit:cover;display:block}
     .topbar-avatar span{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:700;font-size:12px}
-    .main{padding:20px 16px 50px}
+    .bottom-nav{
+      display:flex;position:fixed;left:0;right:0;bottom:0;z-index:15;
+      background:var(--surface-raised);border-top:1px solid var(--border);
+      padding:4px 4px calc(4px + env(safe-area-inset-bottom));
+    }
+    .bottom-nav .nav-btn{
+      flex:1;flex-direction:column;gap:2px;width:auto;padding:7px 2px 6px;
+      font-size:9.5px;text-align:center;border-radius:9px;
+    }
+    .bottom-nav .nav-btn span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .main{padding:20px 16px calc(78px + env(safe-area-inset-bottom))}
     .field-row{grid-template-columns:1fr}
     .pace-row{grid-template-columns:1fr}
   }
@@ -510,14 +518,13 @@
   </aside>
 
   <div class="topbar" id="topbar">
-    <div class="topbar-scroll">
-      <div class="brand">
-        <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-      <div class="nav" id="navMobile" style="flex-direction:row"></div>
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="brand-name" style="font-size:15px">Trade Tape</div>
     </div>
     <button class="topbar-avatar" id="topbarAvatarBtn" title="Account"></button>
   </div>
+  <nav class="bottom-nav" id="navMobile"></nav>
 
   <main class="main">
     <!-- OVERVIEW -->
