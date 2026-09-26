@@ -824,6 +824,9 @@
   var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   var currentUser = null;
 
+  /* ===================== AI analysis service ===================== */
+  var AI_SERVICE_URL = 'https://REPLACE-WITH-RENDER-AI-SERVICE-URL.onrender.com';
+
   /* ===================== constants ===================== */
   var TABS = [
     {id:'overview', label:'Overview', icon:icoGrid},
@@ -1754,7 +1757,13 @@
     html += '</div>';
 
     html += '<div class="field" style="margin-top:18px"><label>AI analysis</label><div id="aiAnalysisBox">';
-    html += '<div class="field-hint">Coming soon — AI analysis of this trade\'s notes and screenshots.</div>';
+    if(trade.aiAnalysis){
+      html += '<div class="ai-analysis-text">'+esc(trade.aiAnalysis).replace(/\n/g,'<br>')+'</div>'+
+        '<button type="button" class="btn" id="analyzeTradeBtn" style="margin-top:10px">Re-analyze</button>';
+    } else {
+      html += '<div class="field-hint" style="margin-bottom:10px">Looks at this trade\'s notes and screenshots and tells you what went right or wrong.</div>'+
+        '<button type="button" class="btn" id="analyzeTradeBtn">Analyze with AI</button>';
+    }
     html += '</div></div>';
 
     html += '<div class="drawer-actions"><button type="button" class="btn danger" id="detailDeleteBtn">Delete</button><button type="button" class="btn primary" id="detailEditBtn">Edit trade</button></div>';
@@ -1786,6 +1795,34 @@
     }
     document.getElementById('detailEditBtn').addEventListener('click', function(){ closeTradeDetail(); openTradeForm(trade); });
     document.getElementById('detailDeleteBtn').addEventListener('click', function(){ closeTradeDetail(); deleteTrade(trade.id); });
+    var analyzeBtn = document.getElementById('analyzeTradeBtn');
+    if(analyzeBtn) analyzeBtn.addEventListener('click', function(){ analyzeTradeWithAI(trade); });
+  }
+  async function analyzeTradeWithAI(trade){
+    var btn = document.getElementById('analyzeTradeBtn');
+    if(btn){ btn.disabled = true; btn.textContent = 'Analyzing… (may take up to a minute)'; }
+    try{
+      var sess = await sb.auth.getSession();
+      var tokenVal = sess.data.session ? sess.data.session.access_token : null;
+      if(!tokenVal) throw new Error('Not signed in.');
+      var res = await fetch(AI_SERVICE_URL+'/analyze-trade', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tokenVal},
+        body: JSON.stringify({tradeId: trade.id})
+      });
+      var data = await res.json().catch(function(){ return {}; });
+      if(!res.ok) throw new Error(data.error || 'Analysis failed.');
+      var nowIso = new Date().toISOString();
+      var upd = await sb.from('trades').update({ai_analysis:data.analysis, ai_analysis_at:nowIso}).eq('id', trade.id);
+      if(upd.error) throw new Error(upd.error.message);
+      await loadTrades();
+      var fresh = findTrade(trade.id) || trade;
+      renderDetailBody(fresh, detailScreenshots);
+      toast('Analysis ready');
+    }catch(err){
+      toast('Could not analyze: '+(err.message||'unknown error'), 'loss');
+      if(btn){ btn.disabled = false; btn.textContent = trade.aiAnalysis ? 'Re-analyze' : 'Analyze with AI'; }
+    }
   }
 
   /* ===================== screenshot handling ===================== */
