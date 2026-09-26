@@ -50,17 +50,13 @@
 
   /* ---------- Auth screen ---------- */
   .auth-wrap{min-height:100vh;display:flex;flex-direction:column;background:var(--surface);position:relative;overflow:hidden}
-  .auth-glow{
-    position:absolute;top:-160px;left:50%;width:560px;height:560px;border-radius:50%;
-    background:radial-gradient(circle,rgba(var(--accent-rgb),.32) 0%,transparent 72%);
-    pointer-events:none;transform:translateX(-50%) scale(1);
-    animation:glow-drift 14s ease-in-out infinite, glow-hue 10s ease-in-out infinite;
-  }
-  @keyframes glow-drift{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-46%) scale(1.15)}}
-  @keyframes glow-hue{0%,100%{filter:hue-rotate(-18deg)}50%{filter:hue-rotate(18deg)}}
-  @media (prefers-reduced-motion:reduce){ .auth-glow{animation:none} }
   .auth-main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;z-index:1}
-  .auth-card{width:100%;max-width:360px;background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:30px 28px;box-shadow:0 8px 28px var(--shadow)}
+  .auth-card{
+    width:100%;max-width:360px;background:var(--surface-raised);border:1px solid var(--border);
+    border-radius:8px;padding:32px 28px 28px;box-shadow:0 8px 28px var(--shadow);
+    position:relative;overflow:hidden;
+  }
+  .auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
   .auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
   .auth-toggle{display:flex;gap:18px;margin-bottom:18px;border-bottom:1px solid var(--border)}
   .auth-toggle button{background:none;border:none;padding:8px 1px;font-size:13.5px;font-weight:700;color:var(--ink-400);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s}
@@ -120,17 +116,7 @@
     padding:10px 12px;font-weight:700;font-size:13.5px;
   }
   .sidebar-add:hover{filter:brightness(1.08)}
-  .sidebar-add, .btn.primary, .tour-next{
-    background:linear-gradient(120deg,#4C8DFF,#6A5CFF,#3FC1E0,#4C8DFF);
-    background-size:300% 300%;animation:grad-flow 9s ease infinite;
-  }
-  @keyframes grad-flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-  @media (prefers-reduced-motion:reduce){ .sidebar-add,.btn.primary,.tour-next{animation:none;background-position:0% 50%} }
-  .brand-grad-a{stop-color:#4C8DFF;animation:brand-grad-a 9s ease infinite}
-  .brand-grad-b{stop-color:#3FC1E0;animation:brand-grad-b 9s ease infinite}
-  @keyframes brand-grad-a{0%,100%{stop-color:#4C8DFF}50%{stop-color:#6A5CFF}}
-  @keyframes brand-grad-b{0%,100%{stop-color:#3FC1E0}50%{stop-color:#4C8DFF}}
-  @media (prefers-reduced-motion:reduce){ .brand-grad-a,.brand-grad-b{animation:none} }
+  .sidebar-add, .btn.primary, .tour-next{background:var(--accent)}
 
   .sidebar-stat{
     padding:14px;border-radius:10px;background:var(--surface-sunken);
@@ -414,21 +400,12 @@
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" class="brand-grad-a"/>
-      <stop offset="100%" class="brand-grad-b"/>
-    </linearGradient>
-  </defs>
-</svg>
 
 <div class="auth-wrap" id="authScreen">
-  <div class="auth-glow"></div>
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div class="auth-toggle" id="authToggle">
@@ -458,11 +435,10 @@
 </div>
 
 <div class="auth-wrap" id="recoveryScreen" style="display:none">
-  <div class="auth-glow"></div>
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div style="margin-bottom:16px">
@@ -480,11 +456,10 @@
 </div>
 
 <div class="auth-wrap" id="onboardingScreen" style="display:none">
-  <div class="auth-glow"></div>
   <div class="auth-main">
     <div class="auth-card">
       <div class="auth-brand">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
       </div>
       <div style="margin-bottom:16px">
@@ -519,7 +494,7 @@
 <div class="app" id="appRoot">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div><div class="brand-name">Trade Tape</div><div class="brand-tag">Trading journal</div></div>
     </div>
     <div class="sidebar-user" id="sidebarUser"></div>
@@ -537,7 +512,7 @@
   <div class="topbar" id="topbar">
     <div class="topbar-scroll">
       <div class="brand">
-        <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="url(#brandGrad)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="nav" id="navMobile" style="flex-direction:row"></div>
     </div>
