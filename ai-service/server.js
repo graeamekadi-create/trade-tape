@@ -11,7 +11,7 @@ const MAX_SCREENSHOTS = 4;
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'trade-tape-ai-service' });
@@ -68,6 +68,100 @@ app.post('/analyze-trade', async (req, res) => {
   }
 });
 
+const CHART_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    hasSetup: { type: 'BOOLEAN' },
+    direction: { type: 'STRING', enum: ['long', 'short', 'none'] },
+    reasoning: { type: 'STRING' },
+    entry: {
+      type: 'OBJECT',
+      properties: { price: { type: 'STRING' }, y: { type: 'NUMBER' } }
+    },
+    stopLoss: {
+      type: 'OBJECT',
+      properties: { price: { type: 'STRING' }, y: { type: 'NUMBER' } }
+    },
+    targets: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          rr: { type: 'STRING' },
+          price: { type: 'STRING' },
+          y: { type: 'NUMBER' }
+        }
+      }
+    }
+  },
+  required: ['hasSetup', 'reasoning']
+};
+
+const CHART_PROMPT = [
+  'You are an expert technical analyst reviewing a single chart screenshot for a possible trading opportunity, visible right now at the right-hand edge of the chart.',
+  'Judge only what is visibly supported by the chart: trend structure, support/resistance, candle patterns, and price action. Do not invent a setup if the chart is choppy, unclear, or shows no meaningful pattern.',
+  '',
+  'If there is NO clear, reasonably confident setup: set hasSetup to false, direction to "none", and briefly explain why in reasoning (1-2 sentences).',
+  '',
+  'If there IS a clear setup: set hasSetup to true, pick direction ("long" or "short"), and provide:',
+  '- entry: the level where a trader would enter',
+  '- stopLoss: a sensible invalidation level for the setup',
+  '- targets: exactly three take-profit levels corresponding to risk:reward ratios of approximately 1:2, 1:3, and 1:5 (set "rr" to those exact labels)',
+  '',
+  'For entry, stopLoss, and every target, set "y" to a normalized vertical position from 0 (top of the image) to 1 (bottom of the image), estimating where that price level sits on THIS image based on the visible price axis and candle positions — this is used to draw a horizontal line at that height, so accuracy matters. Set "price" to a readable price label if you can read one off the axis, otherwise null.',
+  '',
+  'Keep reasoning under 120 words, plain text, no markdown. Respond only with JSON matching the required schema.'
+].join('\n');
+
+app.post('/analyze-chart', async (req, res) => {
+  try {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return res.status(500).json({ error: 'Server is missing Supabase configuration.' });
+    }
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'Server is missing the Gemini API key.' });
+    }
+
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token) return res.status(401).json({ error: 'Not signed in.' });
+
+    const { imageBase64, mimeType } = req.body || {};
+    if (!imageBase64) return res.status(400).json({ error: 'Missing chart image.' });
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+    if (userErr || !userData || !userData.user) {
+      return res.status(401).json({ error: 'Not signed in.' });
+    }
+
+    const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',').pop() : imageBase64;
+    const parts = [
+      { text: CHART_PROMPT },
+      { inline_data: { mime_type: mimeType || 'image/jpeg', data: cleanBase64 } }
+    ];
+
+    const raw = await callGemini(parts, {
+      responseMimeType: 'application/json',
+      responseSchema: CHART_SCHEMA
+    });
+
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch (parseErr) {
+      throw new Error('AI returned an unreadable response. Try again.');
+    }
+
+    return res.json({ result });
+  } catch (err) {
+    console.error('analyze-chart error:', err);
+    return res.status(500).json({ error: err.message || 'Unexpected server error.' });
+  }
+});
+
 function buildPrompt(trade) {
   const isShort = String(trade.side || '').toLowerCase() === 'short';
   const gross = isShort ? (trade.entry - trade.exit) : (trade.exit - trade.entry);
@@ -112,12 +206,14 @@ async function fetchImagePart(url) {
   }
 }
 
-async function callGemini(parts) {
+async function callGemini(parts, generationConfig) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = { contents: [{ parts }] };
+  if (generationConfig) body.generationConfig = generationConfig;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }] })
+    body: JSON.stringify(body)
   });
 
   const data = await res.json().catch(() => null);
