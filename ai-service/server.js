@@ -73,7 +73,22 @@ const CHART_SCHEMA = {
   properties: {
     hasSetup: { type: 'BOOLEAN' },
     direction: { type: 'STRING', enum: ['long', 'short', 'none'] },
+    pattern: { type: 'STRING' },
+    confidence: { type: 'STRING', enum: ['A', 'B', 'C', 'D'] },
     reasoning: { type: 'STRING' },
+    indicatorsNoted: { type: 'STRING' },
+    invalidation: { type: 'STRING' },
+    keyLevels: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          label: { type: 'STRING' },
+          price: { type: 'STRING' },
+          y: { type: 'NUMBER' }
+        }
+      }
+    },
     entry: {
       type: 'OBJECT',
       properties: { price: { type: 'STRING' }, y: { type: 'NUMBER' } }
@@ -97,21 +112,31 @@ const CHART_SCHEMA = {
   required: ['hasSetup', 'reasoning']
 };
 
-const CHART_PROMPT = [
-  'You are an expert technical analyst reviewing a single chart screenshot for a possible trading opportunity, visible right now at the right-hand edge of the chart.',
-  'Judge only what is visibly supported by the chart: trend structure, support/resistance, candle patterns, and price action. Do not invent a setup if the chart is choppy, unclear, or shows no meaningful pattern.',
-  '',
-  'If there is NO clear, reasonably confident setup: set hasSetup to false, direction to "none", and briefly explain why in reasoning (1-2 sentences).',
-  '',
-  'If there IS a clear setup: set hasSetup to true, pick direction ("long" or "short"), and provide:',
-  '- entry: the level where a trader would enter',
-  '- stopLoss: a sensible invalidation level for the setup',
-  '- targets: exactly three take-profit levels corresponding to risk:reward ratios of approximately 1:2, 1:3, and 1:5 (set "rr" to those exact labels)',
-  '',
-  'For entry, stopLoss, and every target, set "y" to a normalized vertical position from 0 (top of the image) to 1 (bottom of the image), estimating where that price level sits on THIS image based on the visible price axis and candle positions — this is used to draw a horizontal line at that height, so accuracy matters. Set "price" to a readable price label if you can read one off the axis, otherwise null.',
-  '',
-  'Keep reasoning under 120 words, plain text, no markdown. Respond only with JSON matching the required schema.'
-].join('\n');
+function buildChartPrompt(assetType) {
+  const assetLine = assetType
+    ? `The trader says this is a ${assetType} chart — factor in typical volatility, session behavior, and price precision for that asset class.`
+    : 'The asset type wasn\'t specified — infer what you can from the chart and keep guidance general if unsure.';
+
+  return [
+    'You are an expert technical analyst reviewing a single chart screenshot for a possible trading opportunity, visible right now at the right-hand edge of the chart.',
+    assetLine,
+    'Judge only what is visibly supported by the chart: trend structure, support/resistance, candle patterns, and price action. Note any visible indicators or overlays (moving averages, VWAP, Bollinger Bands, RSI, volume, order-flow/footprint data) and factor them into your read — describe what you used in indicatorsNoted, or leave it an empty string if nothing extra is visible. Do not invent a setup if the chart is choppy, unclear, or shows no meaningful pattern.',
+    '',
+    'Identify up to 3 key support/resistance zones visible on the chart, if any, as keyLevels — each with a short label such as "Resistance" or "Demand zone".',
+    '',
+    'If there is NO clear, reasonably confident setup: set hasSetup to false, direction to "none", pattern to "None", confidence to "D", and briefly explain why in reasoning (1-2 sentences).',
+    '',
+    'If there IS a clear setup: set hasSetup to true, pick direction ("long" or "short"), name the specific chart pattern if one clearly applies (e.g. "Bull flag", "Head and shoulders", "Ascending triangle", "Trend continuation" — otherwise "None"), and grade your confidence as a letter: "A" (strong, textbook), "B" (decent, some noise), or "C" (marginal, low conviction). Never use "D" when hasSetup is true. Then provide:',
+    '- entry: the level where a trader would enter',
+    '- stopLoss: a sensible invalidation level for the setup',
+    '- invalidation: one plain-language sentence describing the specific price action that would prove this setup wrong (not just the stop price restated)',
+    '- targets: exactly three take-profit levels corresponding to risk:reward ratios of approximately 1:2, 1:3, and 1:5 (set "rr" to those exact labels)',
+    '',
+    'For entry, stopLoss, every target, and every keyLevel, set "y" to a normalized vertical position from 0 (top of the image) to 1 (bottom of the image), estimating where that price level sits on THIS image based on the visible price axis and candle positions — this is used to draw a horizontal line at that height, so accuracy matters. Set "price" to a readable price label if you can read one off the axis, otherwise null.',
+    '',
+    'Keep reasoning under 120 words, plain text, no markdown, in everyday language a non-expert trader can follow. Respond only with JSON matching the required schema.'
+  ].join('\n');
+}
 
 app.post('/analyze-chart', async (req, res) => {
   try {
@@ -126,7 +151,7 @@ app.post('/analyze-chart', async (req, res) => {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Not signed in.' });
 
-    const { imageBase64, mimeType } = req.body || {};
+    const { imageBase64, mimeType, assetType } = req.body || {};
     if (!imageBase64) return res.status(400).json({ error: 'Missing chart image.' });
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -139,7 +164,7 @@ app.post('/analyze-chart', async (req, res) => {
 
     const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',').pop() : imageBase64;
     const parts = [
-      { text: CHART_PROMPT },
+      { text: buildChartPrompt(assetType) },
       { inline_data: { mime_type: mimeType || 'image/jpeg', data: cleanBase64 } }
     ];
 

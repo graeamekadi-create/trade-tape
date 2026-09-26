@@ -364,8 +364,14 @@
   .chart-scan-line.stop .chart-scan-line-label{background:var(--loss);color:#fff}
   .chart-scan-line.target{border-color:var(--profit)}
   .chart-scan-line.target .chart-scan-line-label{background:var(--profit);color:#fff}
+  .chart-scan-line.level{border-color:var(--ink-400)}
+  .chart-scan-line.level .chart-scan-line-label{background:var(--ink-400);color:var(--surface)}
   .chart-scan-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
   .chart-scan-legend span{font-size:12px;font-family:var(--font-mono);padding:4px 9px;border-radius:6px;border:1px solid var(--border);color:var(--ink-600)}
+  .chart-scan-legend span.confidence-A{color:var(--profit);border-color:var(--profit)}
+  .chart-scan-legend span.confidence-B{color:var(--accent);border-color:var(--accent)}
+  .chart-scan-legend span.confidence-C{color:var(--loss);border-color:var(--loss)}
+  .chart-scan-note{font-size:12.5px;color:var(--ink-400);font-style:italic;margin-top:8px}
   .chart-scan-no-setup{text-align:center;padding:20px 24px}
   .chart-scan-no-setup h3{font-size:16px;margin-bottom:6px}
 
@@ -716,6 +722,16 @@
     <section class="view" id="view-ai">
       <div class="view-head"><div><h1>AI</h1><div class="view-sub">Scan a chart screenshot for a trading opportunity</div></div></div>
       <div class="card">
+        <div class="field" style="margin-bottom:14px">
+          <label>Asset type</label>
+          <select id="chartScanAssetType">
+            <option value="">Not sure / other</option>
+            <option value="stock">Stocks</option>
+            <option value="forex">Forex</option>
+            <option value="crypto">Crypto</option>
+            <option value="futures">Futures</option>
+          </select>
+        </div>
         <input type="file" id="chartScanFile" accept="image/*" style="display:none">
         <div class="chart-scan-drop" id="chartScanDrop">
           <svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.3 3.7 3.7 1.3-3.7 1.3L8 11.5l-1.3-3.7-3.7-1.3 3.7-1.3z" fill="currentColor"/><path d="M13 10.5l.55 1.45L15 12.5l-1.45.55L13 14.5l-.55-1.45L11 12.5l1.45-.55z" fill="currentColor"/></svg>
@@ -1954,10 +1970,11 @@
       var tokenVal = sess.data.session ? sess.data.session.access_token : null;
       if(!tokenVal) throw new Error('Not signed in.');
       var base64 = await blobToBase64(chartScanBlob);
+      var assetType = document.getElementById('chartScanAssetType').value;
       var res = await fetch(AI_SERVICE_URL+'/analyze-chart', {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+tokenVal},
-        body: JSON.stringify({imageBase64: base64, mimeType:'image/jpeg'})
+        body: JSON.stringify({imageBase64: base64, mimeType:'image/jpeg', assetType: assetType})
       });
       var data = await res.json().catch(function(){ return {}; });
       if(!res.ok) throw new Error(data.error || 'Scan failed.');
@@ -1978,6 +1995,9 @@
         esc((result && result.reasoning) || 'No meaningful pattern or signal was visible in this chart.')+'</p></div>';
       return;
     }
+    (result.keyLevels || []).forEach(function(lvl){
+      addChartScanLine('level', esc(lvl.label||'Level')+(lvl.price ? ' '+lvl.price : ''), lvl.y);
+    });
     addChartScanLine('entry', 'Entry'+(result.entry && result.entry.price ? ' '+result.entry.price : ''), result.entry && result.entry.y);
     addChartScanLine('stop', 'Stop'+(result.stopLoss && result.stopLoss.price ? ' '+result.stopLoss.price : ''), result.stopLoss && result.stopLoss.y);
     (result.targets || []).forEach(function(t){
@@ -1985,6 +2005,8 @@
     });
 
     var legendItems = ['<span>Direction: '+esc((result.direction||'').toUpperCase())+'</span>'];
+    if(result.pattern && result.pattern.toLowerCase()!=='none') legendItems.push('<span>Pattern: '+esc(result.pattern)+'</span>');
+    if(result.confidence) legendItems.push('<span class="confidence-'+esc(result.confidence)+'">Confidence: '+esc(result.confidence)+'</span>');
     if(result.entry) legendItems.push('<span>Entry'+(result.entry.price?': '+esc(result.entry.price):'')+'</span>');
     if(result.stopLoss) legendItems.push('<span>Stop'+(result.stopLoss.price?': '+esc(result.stopLoss.price):'')+'</span>');
     (result.targets || []).forEach(function(t){
@@ -1992,7 +2014,10 @@
     });
     legend.innerHTML = legendItems.join('');
 
-    resultBox.innerHTML = '<div class="ai-analysis-text" style="margin-top:16px">'+esc(result.reasoning||'').replace(/\n/g,'<br>')+'</div>';
+    var html = '<div class="ai-analysis-text" style="margin-top:16px">'+esc(result.reasoning||'').replace(/\n/g,'<br>')+'</div>';
+    if(result.invalidation) html += '<div class="chart-scan-note">Invalidation: '+esc(result.invalidation)+'</div>';
+    if(result.indicatorsNoted) html += '<div class="chart-scan-note">Indicators: '+esc(result.indicatorsNoted)+'</div>';
+    resultBox.innerHTML = html;
   }
 
   /* ===================== export / import ===================== */
