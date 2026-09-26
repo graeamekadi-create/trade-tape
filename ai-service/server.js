@@ -7,6 +7,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_ALLOWED_USER_ID = process.env.TELEGRAM_ALLOWED_USER_ID;
 const MAX_SCREENSHOTS = 4;
 
 const app = express();
@@ -112,10 +115,38 @@ const CHART_SCHEMA = {
   required: ['hasSetup', 'reasoning']
 };
 
-function buildChartPrompt(assetType) {
+async function fetchFundamentals(ticker) {
+  if (!ALPHA_VANTAGE_API_KEY || !ticker) return null;
+  try {
+    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(ticker)}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    const r = await fetch(url);
+    const d = await r.json().catch(() => null);
+    if (!d || !d.Symbol) return null;
+    const pct = (v) => (v && v !== 'None' ? `${(parseFloat(v) * 100).toFixed(1)}%` : null);
+    const lines = [
+      `Ticker: ${d.Symbol}${d.Name ? ' (' + d.Name + ')' : ''}`,
+      d.Sector ? `Sector: ${d.Sector}` : null,
+      d.PERatio && d.PERatio !== 'None' ? `P/E ratio: ${d.PERatio}` : null,
+      d.EPS && d.EPS !== 'None' ? `EPS: ${d.EPS}` : null,
+      pct(d.ProfitMargin) ? `Profit margin: ${pct(d.ProfitMargin)}` : null,
+      pct(d.QuarterlyRevenueGrowthYOY) ? `Revenue growth (YoY): ${pct(d.QuarterlyRevenueGrowthYOY)}` : null,
+      pct(d.QuarterlyEarningsGrowthYOY) ? `Earnings growth (YoY): ${pct(d.QuarterlyEarningsGrowthYOY)}` : null
+    ].filter(Boolean);
+    return lines.length > 1 ? lines.join('\n') : null;
+  } catch (err) {
+    console.error('fetchFundamentals failed:', err.message);
+    return null;
+  }
+}
+
+function buildChartPrompt(assetType, fundamentalsText) {
   const assetLine = assetType
     ? `The trader says this is a ${assetType} chart — factor in typical volatility, session behavior, and price precision for that asset class.`
     : 'The asset type wasn\'t specified — infer what you can from the chart and keep guidance general if unsure.';
+
+  const fundamentalsBlock = fundamentalsText
+    ? ['', 'Fundamental context for reference — weigh visible chart structure more heavily than this, but factor it in qualitatively (e.g. note if a weak technical setup is compounded by weak fundamentals, or vice versa):', fundamentalsText]
+    : [];
 
   return [
     'You are an expert technical analyst reviewing a single chart screenshot for a possible trading opportunity, visible right now at the right-hand edge of the chart.',
@@ -134,8 +165,30 @@ function buildChartPrompt(assetType) {
     '',
     'For entry, stopLoss, every target, and every keyLevel, set "y" to a normalized vertical position from 0 (top of the image) to 1 (bottom of the image), estimating where that price level sits on THIS image based on the visible price axis and candle positions — this is used to draw a horizontal line at that height, so accuracy matters. Set "price" to a readable price label if you can read one off the axis, otherwise null.',
     '',
-    'Keep reasoning under 120 words, plain text, no markdown, in everyday language a non-expert trader can follow. Respond only with JSON matching the required schema.'
+    'Keep reasoning under 120 words, plain text, no markdown, in everyday language a non-expert trader can follow. Respond only with JSON matching the required schema.',
+    ...fundamentalsBlock
   ].join('\n');
+}
+
+async function analyzeChartImage({ imageBase64, mimeType, assetType, ticker }) {
+  const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',').pop() : imageBase64;
+  const fundamentalsText = assetType === 'stock' && ticker ? await fetchFundamentals(ticker) : null;
+
+  const parts = [
+    { text: buildChartPrompt(assetType, fundamentalsText) },
+    { inline_data: { mime_type: mimeType || 'image/jpeg', data: cleanBase64 } }
+  ];
+
+  const raw = await callGemini(parts, {
+    responseMimeType: 'application/json',
+    responseSchema: CHART_SCHEMA
+  });
+
+  try {
+    return JSON.parse(raw);
+  } catch (parseErr) {
+    throw new Error('AI returned an unreadable response. Try again.');
+  }
 }
 
 app.post('/analyze-chart', async (req, res) => {
@@ -151,7 +204,7 @@ app.post('/analyze-chart', async (req, res) => {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Not signed in.' });
 
-    const { imageBase64, mimeType, assetType } = req.body || {};
+    const { imageBase64, mimeType, assetType, ticker } = req.body || {};
     if (!imageBase64) return res.status(400).json({ error: 'Missing chart image.' });
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -162,30 +215,96 @@ app.post('/analyze-chart', async (req, res) => {
       return res.status(401).json({ error: 'Not signed in.' });
     }
 
-    const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',').pop() : imageBase64;
-    const parts = [
-      { text: buildChartPrompt(assetType) },
-      { inline_data: { mime_type: mimeType || 'image/jpeg', data: cleanBase64 } }
-    ];
-
-    const raw = await callGemini(parts, {
-      responseMimeType: 'application/json',
-      responseSchema: CHART_SCHEMA
-    });
-
-    let result;
-    try {
-      result = JSON.parse(raw);
-    } catch (parseErr) {
-      throw new Error('AI returned an unreadable response. Try again.');
-    }
-
+    const result = await analyzeChartImage({ imageBase64, mimeType, assetType, ticker });
     return res.json({ result });
   } catch (err) {
     console.error('analyze-chart error:', err);
     return res.status(500).json({ error: err.message || 'Unexpected server error.' });
   }
 });
+
+app.post('/telegram-webhook', (req, res) => {
+  res.sendStatus(200);
+  handleTelegramUpdate(req.body || {}).catch((err) => console.error('telegram handling error:', err));
+});
+
+async function handleTelegramUpdate(update) {
+  if (!TELEGRAM_BOT_TOKEN) return;
+  const msg = update.message;
+  if (!msg) return;
+  const chatId = msg.chat && msg.chat.id;
+  const fromId = msg.from && msg.from.id;
+  if (!chatId) return;
+
+  if (TELEGRAM_ALLOWED_USER_ID && String(fromId) !== String(TELEGRAM_ALLOWED_USER_ID)) {
+    await telegramSend(chatId, 'This bot is private.');
+    return;
+  }
+  if (!TELEGRAM_ALLOWED_USER_ID) {
+    await telegramSend(chatId, `Your Telegram user ID is ${fromId}. Add this as TELEGRAM_ALLOWED_USER_ID in Render to lock this bot to just you.`);
+  }
+
+  const photos = msg.photo;
+  if (!photos || !photos.length) {
+    await telegramSend(chatId, 'Send me a chart screenshot as a photo and I\'ll scan it for a setup. For stocks, add the ticker as the photo caption (e.g. "AAPL") to include fundamentals.');
+    return;
+  }
+
+  try {
+    await telegramSend(chatId, 'Scanning chart…');
+    const fileId = photos[photos.length - 1].file_id;
+    const { base64, mimeType } = await telegramDownloadPhoto(fileId);
+    const caption = (msg.caption || '').trim();
+    const ticker = /^[A-Za-z.]{1,6}$/.test(caption) ? caption.toUpperCase() : null;
+    const assetType = ticker ? 'stock' : '';
+    const result = await analyzeChartImage({ imageBase64: base64, mimeType, assetType, ticker });
+    await telegramSend(chatId, formatChartResultForTelegram(result), true);
+  } catch (err) {
+    console.error('telegram analyze error:', err);
+    await telegramSend(chatId, 'Could not scan that chart: ' + (err.message || 'unknown error'));
+  }
+}
+
+async function telegramDownloadPhoto(fileId) {
+  const infoRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+  const info = await infoRes.json();
+  if (!info.ok) throw new Error('Could not fetch that photo from Telegram.');
+  const filePath = info.result.file_path;
+  const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+  const imgRes = await fetch(fileUrl);
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  const mimeType = filePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  return { base64: buf.toString('base64'), mimeType };
+}
+
+async function telegramSend(chatId, text, useHtml) {
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: useHtml ? 'HTML' : undefined })
+  });
+}
+
+function escTelegramHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function formatChartResultForTelegram(result) {
+  if (!result || !result.hasSetup) {
+    return 'No clear trade here.\n\n' + escTelegramHtml((result && result.reasoning) || 'No meaningful pattern or signal was visible in this chart.');
+  }
+  const lines = [
+    `<b>${escTelegramHtml((result.direction || '').toUpperCase())}</b> — ${escTelegramHtml(result.pattern || '')} (confidence ${escTelegramHtml(result.confidence || '')})`,
+    '',
+    result.entry ? `Entry: ${escTelegramHtml(result.entry.price || 'n/a')}` : null,
+    result.stopLoss ? `Stop: ${escTelegramHtml(result.stopLoss.price || 'n/a')}` : null,
+    ...(result.targets || []).map((t) => `${escTelegramHtml(t.rr || 'Target')}: ${escTelegramHtml(t.price || 'n/a')}`),
+    '',
+    escTelegramHtml(result.reasoning || ''),
+    result.invalidation ? `\nInvalidation: ${escTelegramHtml(result.invalidation)}` : null
+  ].filter((l) => l !== null);
+  return lines.join('\n');
+}
 
 function buildPrompt(trade) {
   const isShort = String(trade.side || '').toLowerCase() === 'short';
