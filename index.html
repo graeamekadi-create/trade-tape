@@ -357,6 +357,7 @@
   .chart-scan-canvas{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:var(--surface-sunken)}
   .chart-scan-canvas img{display:block;width:100%}
   .chart-scan-canvas svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+  .chart-scan-pin{position:absolute;transform:translateY(-100%);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;font-family:var(--font-mono);white-space:nowrap;color:#fff;pointer-events:none}
   .chart-scan-extra-item{display:flex;align-items:center;gap:10px;margin-top:8px}
   .chart-scan-extra-item img{width:44px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--border);flex-shrink:0}
   .chart-scan-extra-item input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--ink-900)}
@@ -1994,8 +1995,45 @@
       });
     });
   }
+  var chartScanPinRects = [];
   function clearChartScanAnnotations(){
     document.getElementById('chartScanSvg').innerHTML = '';
+    document.getElementById('chartScanCanvas').querySelectorAll('.chart-scan-pin').forEach(function(el){ el.remove(); });
+    chartScanPinRects = [];
+  }
+  function pinRectsOverlap(a,b){
+    return !(a.right<=b.left || b.right<=a.left || a.bottom<=b.top || b.bottom<=a.top);
+  }
+  function addChartScanPin(xPct, yPct, text, color){
+    if(!text) return;
+    var height = 7.5; // % of container height, approx one label row plus a small gap
+    var width = Math.min(40, 3 + text.length*1.3); // % of container width, approx label width
+    var rect = {left:xPct, right:xPct+width, top:yPct-height, bottom:yPct};
+    var guard = 0, moved = true;
+    while(moved && guard < 30){
+      moved = false;
+      for(var i=0;i<chartScanPinRects.length;i++){
+        if(pinRectsOverlap(rect, chartScanPinRects[i])){
+          rect.top += height; rect.bottom += height;
+          moved = true;
+        }
+      }
+      guard++;
+    }
+    chartScanPinRects.push(rect);
+    var canvas = document.getElementById('chartScanCanvas');
+    var pin = document.createElement('div');
+    pin.className = 'chart-scan-pin';
+    pin.style.left = xPct+'%';
+    pin.style.top = rect.bottom+'%';
+    pin.style.background = color || '#4C8DFF';
+    pin.textContent = text;
+    canvas.appendChild(pin);
+  }
+  function pinText(label, price){
+    var l = (label||'').trim();
+    var p = (price!=null && price!=='') ? String(price) : '';
+    return (l+' '+p).trim();
   }
   function addChartScanTrendline(t){
     if(t.x1==null||t.y1==null||t.x2==null||t.y2==null) return;
@@ -2008,6 +2046,7 @@
     line.setAttribute('stroke-dasharray', '16 10');
     line.setAttribute('stroke-linecap', 'round');
     svg.appendChild(line);
+    addChartScanPin(t.x1/10, t.y1/10, pinText(t.label, t.price), t.color);
   }
   function addChartScanZone(z){
     if(z.x==null||z.y==null||z.width==null||z.height==null) return;
@@ -2020,6 +2059,7 @@
     rect.setAttribute('stroke', z.color || '#4C8DFF');
     rect.setAttribute('stroke-width', '4');
     svg.appendChild(rect);
+    addChartScanPin(z.x/10, z.y/10, pinText(z.label, z.price), z.color);
   }
   function blobToBase64(blob){
     return new Promise(function(resolve, reject){
@@ -2090,6 +2130,12 @@
       '<span class="confidence-'+confidenceClass(result.confidence_score)+'">Confidence: '+esc(result.confidence_score)+'/10</span>'
     ];
     (result.timeframe_confluence || []).forEach(function(c){ legendItems.push('<span>'+esc(c)+'</span>'); });
+    (ann.trendlines || []).forEach(function(t){
+      if(t.label) legendItems.push('<span>'+esc(t.label)+(t.price?': '+esc(t.price):'')+'</span>');
+    });
+    (ann.zones || []).forEach(function(z){
+      if(z.label) legendItems.push('<span>'+esc(z.label)+(z.price?': '+esc(z.price):'')+'</span>');
+    });
     legend.innerHTML = legendItems.join('');
 
     var html = '<div class="ai-analysis-text" style="margin-top:16px">'+esc(result.statement||'').replace(/\n/g,'<br>')+'</div>';

@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_ALLOWED_USER_ID = process.env.TELEGRAM_ALLOWED_USER_ID;
@@ -92,7 +92,7 @@ const CHART_SCHEMA = {
             properties: {
               x1: { type: 'NUMBER' }, y1: { type: 'NUMBER' },
               x2: { type: 'NUMBER' }, y2: { type: 'NUMBER' },
-              label: { type: 'STRING' }, color: { type: 'STRING' }
+              label: { type: 'STRING' }, price: { type: 'STRING' }, color: { type: 'STRING' }
             }
           }
         },
@@ -103,7 +103,7 @@ const CHART_SCHEMA = {
             properties: {
               x: { type: 'NUMBER' }, y: { type: 'NUMBER' },
               width: { type: 'NUMBER' }, height: { type: 'NUMBER' },
-              label: { type: 'STRING' }, color: { type: 'STRING' }
+              label: { type: 'STRING' }, price: { type: 'STRING' }, color: { type: 'STRING' }
             }
           }
         }
@@ -170,6 +170,8 @@ function buildChartPrompt(assetType, fundamentalsText, imageLabels) {
     'Coordinate system for annotations.trendlines and annotations.zones: map the PRIMARY chart (image 1, the entry-timeframe chart) onto a normalized 1000x1000 grid, x from 0 (left) to 1000 (right) and y from 0 (top) to 1000 (bottom) of that image. All coordinates must be relative to image 1 only, even if other images were provided for context.',
     '- trendlines: straight lines from (x1,y1) to (x2,y2) — use these for the macro resistance/support line, trendlines/channel edges, entry line, stop-loss line, and each take-profit target. Provide exactly three take-profit trendlines at risk:reward ratios of approximately 1:2, 1:3, and 1:5 (label them "TP 1:2", "TP 1:3", "TP 1:5"). Label the entry line "Entry" and the stop line "Stop". Use color "blue" for entry, "red" for stop/resistance, "green" for targets/support, "gray" for other structure lines.',
     '- zones: rectangles (x, y = top-left corner, width, height) — use these for demand/supply zones or an entry zone rather than a single line, when that fits the structure better.',
+    '- Draw a chart the way a professional analyst would actually mark one up, not just the bare minimum. Beyond entry/stop/3 targets, ALWAYS include at least one or two additional trendlines or zones that show the structure driving your call — e.g. the macro trend/channel line, the specific swing high or low that defines it, or the support/resistance level that flipped roles. A setup with no visible structural reasoning behind it is not a valid setup.',
+    '- EVERY trendline and zone, with no exceptions, must have a real "price" value read off the visible price axis at that level (a plain number/string like "2528.14") — never leave price null or empty if any axis is visible. This is what a trader will act on, so it must be a concrete, specific figure, not a vague description.',
     'If trade_found is false, annotations must be {} (empty, no trendlines or zones).',
     '',
     'Respond only with JSON matching the required schema — no markdown, no text outside the JSON.',
@@ -306,9 +308,16 @@ function formatChartResultForTelegram(result) {
   if (!result || !result.trade_found) {
     return 'No trade.\n\n' + escTelegramHtml((result && result.statement) || 'No meaningful pattern or signal was visible in this chart.');
   }
+  const ann = result.annotations || {};
+  const levelLines = [...(ann.trendlines || []), ...(ann.zones || [])]
+    .filter((a) => a.label)
+    .map((a) => `${escTelegramHtml(a.label)}: ${escTelegramHtml(a.price || 'n/a')}`);
+
   const lines = [
     `<b>${escTelegramHtml((result.direction || '').toUpperCase())}</b> — ${escTelegramHtml(result.strategy_name || '')} (confidence ${escTelegramHtml(result.confidence_score)}/10)`,
     (result.timeframe_confluence || []).length ? escTelegramHtml(result.timeframe_confluence.join(', ')) : null,
+    '',
+    ...levelLines,
     '',
     escTelegramHtml(result.statement || ''),
     result.invalidation ? `\nInvalidation: ${escTelegramHtml(result.invalidation)}` : null
