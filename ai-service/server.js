@@ -63,7 +63,7 @@ app.post('/analyze-trade', async (req, res) => {
       if (imagePart) parts.push(imagePart);
     }
 
-    const analysis = await callGemini(parts);
+    const analysis = await callGemini(parts, { thinkingConfig: { thinkingBudget: -1 } });
     return res.json({ analysis });
   } catch (err) {
     console.error('analyze-trade error:', err);
@@ -195,7 +195,8 @@ async function analyzeChartImage({ images, assetType, ticker }) {
 
   const raw = await callGemini(parts, {
     responseMimeType: 'application/json',
-    responseSchema: CHART_SCHEMA
+    responseSchema: CHART_SCHEMA,
+    thinkingConfig: { thinkingBudget: -1 }
   });
 
   try {
