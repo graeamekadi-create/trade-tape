@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_ALLOWED_USER_ID = process.env.TELEGRAM_ALLOWED_USER_ID;
@@ -350,7 +350,8 @@ async function fetchImagePart(url) {
   }
 }
 
-async function callGemini(parts, generationConfig) {
+async function callGemini(parts, generationConfig, attempt) {
+  attempt = attempt || 1;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
   const body = { contents: [{ parts }] };
   if (generationConfig) body.generationConfig = generationConfig;
@@ -362,6 +363,10 @@ async function callGemini(parts, generationConfig) {
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
+    if (res.status === 503 && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      return callGemini(parts, generationConfig, attempt + 1);
+    }
     const msg = (data && data.error && data.error.message) || `Gemini request failed (${res.status}).`;
     throw new Error(msg);
   }
