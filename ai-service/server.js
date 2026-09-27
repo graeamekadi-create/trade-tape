@@ -74,45 +74,43 @@ app.post('/analyze-trade', async (req, res) => {
 const CHART_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    hasSetup: { type: 'BOOLEAN' },
+    trade_found: { type: 'BOOLEAN' },
     direction: { type: 'STRING', enum: ['long', 'short', 'none'] },
-    pattern: { type: 'STRING' },
-    confidence: { type: 'STRING', enum: ['A', 'B', 'C', 'D'] },
-    reasoning: { type: 'STRING' },
-    indicatorsNoted: { type: 'STRING' },
+    strategy_name: { type: 'STRING' },
+    confidence_score: { type: 'NUMBER' },
+    timeframe_confluence: { type: 'ARRAY', items: { type: 'STRING' } },
+    statement: { type: 'STRING' },
     invalidation: { type: 'STRING' },
-    keyLevels: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          label: { type: 'STRING' },
-          price: { type: 'STRING' },
-          y: { type: 'NUMBER' }
-        }
-      }
-    },
-    entry: {
+    indicatorsNoted: { type: 'STRING' },
+    annotations: {
       type: 'OBJECT',
-      properties: { price: { type: 'STRING' }, y: { type: 'NUMBER' } }
-    },
-    stopLoss: {
-      type: 'OBJECT',
-      properties: { price: { type: 'STRING' }, y: { type: 'NUMBER' } }
-    },
-    targets: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          rr: { type: 'STRING' },
-          price: { type: 'STRING' },
-          y: { type: 'NUMBER' }
+      properties: {
+        trendlines: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              x1: { type: 'NUMBER' }, y1: { type: 'NUMBER' },
+              x2: { type: 'NUMBER' }, y2: { type: 'NUMBER' },
+              label: { type: 'STRING' }, color: { type: 'STRING' }
+            }
+          }
+        },
+        zones: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              x: { type: 'NUMBER' }, y: { type: 'NUMBER' },
+              width: { type: 'NUMBER' }, height: { type: 'NUMBER' },
+              label: { type: 'STRING' }, color: { type: 'STRING' }
+            }
+          }
         }
       }
     }
   },
-  required: ['hasSetup', 'reasoning']
+  required: ['trade_found', 'statement', 'confidence_score']
 };
 
 async function fetchFundamentals(ticker) {
@@ -139,45 +137,59 @@ async function fetchFundamentals(ticker) {
   }
 }
 
-function buildChartPrompt(assetType, fundamentalsText) {
+function buildChartPrompt(assetType, fundamentalsText, imageLabels) {
   const assetLine = assetType
     ? `The trader says this is a ${assetType} chart — factor in typical volatility, session behavior, and price precision for that asset class.`
-    : 'The asset type wasn\'t specified — infer what you can from the chart and keep guidance general if unsure.';
+    : 'The asset type wasn\'t specified — infer what you can from the chart(s) and keep guidance general if unsure.';
+
+  const imagesLine = imageLabels.length > 1
+    ? `You have been given ${imageLabels.length} chart images of the SAME instrument at different timeframes, in this order: ${imageLabels.map((l, i) => `image ${i + 1} = ${l}`).join(', ')}.`
+    : 'You have been given a single chart image (image 1).';
 
   const fundamentalsBlock = fundamentalsText
-    ? ['', 'Fundamental context for reference — weigh visible chart structure more heavily than this, but factor it in qualitatively (e.g. note if a weak technical setup is compounded by weak fundamentals, or vice versa):', fundamentalsText]
+    ? ['', 'Fundamental context for reference — weigh visible chart structure more heavily than this, but factor it in qualitatively:', fundamentalsText]
     : [];
 
   return [
-    'You are an expert technical analyst reviewing a single chart screenshot for a possible trading opportunity, visible right now at the right-hand edge of the chart.',
+    'You are the core backend AI engine for a high-performance, multi-strategy algorithmic trading app. Your job is to perform strict Multi-Timeframe (MTF) visual chart analysis on the attached chart image(s), identify only highly valid trading setups, apply a rigorous filter to reject weak setups, and return precise graphical coordinates alongside an execution statement.',
+    imagesLine,
     assetLine,
-    'Judge only what is visibly supported by the chart: trend structure, support/resistance, candle patterns, and price action. Note any visible indicators or overlays (moving averages, VWAP, Bollinger Bands, RSI, volume, order-flow/footprint data) and factor them into your read — describe what you used in indicatorsNoted, or leave it an empty string if nothing extra is visible. Do not invent a setup if the chart is choppy, unclear, or shows no meaningful pattern.',
     '',
-    'Identify up to 3 key support/resistance zones visible on the chart, if any, as keyLevels — each with a short label such as "Resistance" or "Demand zone".',
+    'Analysis pipeline — evaluate market structure in this strict sequence:',
+    '1. Macro Trend Filter (highest timeframe available): determine the dominant direction (bullish, bearish, or sideways range).',
+    '2. Intermediate Setup Detection: scan for valid chart patterns and structures (support/resistance flips, breakout triangles, moving-average crosses, order blocks, channels). The pattern MUST align with the macro trend direction.',
+    '3. Micro Trigger Validation: inspect the lowest-timeframe image (or the only image, if just one) for exact entry confirmation from candles, wicks, and volume.',
+    'Note any visible indicators/overlays you used (moving averages, VWAP, Bollinger Bands, RSI, volume, order-flow) in indicatorsNoted, or leave it an empty string if none.',
     '',
-    'If there is NO clear, reasonably confident setup: set hasSetup to false, direction to "none", pattern to "None", confidence to "D", and briefly explain why in reasoning (1-2 sentences).',
+    'Grade overall setup quality as confidence_score, a number from 1 to 10 based on confluence (how many timeframes/indicators agree):',
+    '- Timeframe mismatch or weak confluence (score below 7): if a lower-timeframe pattern trades directly into major higher-timeframe resistance/support, or the pattern lacks volume/wick confirmation, you MUST reject it — set trade_found to false, direction to "none", and clear annotations to {}.',
+    '- Strong confluence (score 7 or above): set trade_found to true and generate full execution annotations.',
     '',
-    'If there IS a clear setup: set hasSetup to true, pick direction ("long" or "short"), name the specific chart pattern if one clearly applies (e.g. "Bull flag", "Head and shoulders", "Ascending triangle", "Trend continuation" — otherwise "None"), and grade your confidence as a letter: "A" (strong, textbook), "B" (decent, some noise), or "C" (marginal, low conviction). Never use "D" when hasSetup is true. Then provide:',
-    '- entry: the level where a trader would enter',
-    '- stopLoss: a sensible invalidation level for the setup',
-    '- invalidation: one plain-language sentence describing the specific price action that would prove this setup wrong (not just the stop price restated)',
-    '- targets: exactly three take-profit levels corresponding to risk:reward ratios of approximately 1:2, 1:3, and 1:5 (set "rr" to those exact labels)',
+    'When trade_found is true, also set: direction ("long" or "short"), strategy_name (e.g. "S/R Flip Breakout", "Bull Flag Continuation"), timeframe_confluence (short strings naming what aligned, e.g. ["4H trend alignment", "15m entry confirmation"]), invalidation (one plain-language sentence describing exactly what price action would prove the setup wrong), and statement (a clear, punchy, human-readable paragraph covering the market structure, why the timeframes agree, and the risk:reward parameters).',
     '',
-    'For entry, stopLoss, every target, and every keyLevel, set "y" to a normalized vertical position from 0 (top of the image) to 1 (bottom of the image), estimating where that price level sits on THIS image based on the visible price axis and candle positions — this is used to draw a horizontal line at that height, so accuracy matters. Set "price" to a readable price label if you can read one off the axis, otherwise null.',
+    'Coordinate system for annotations.trendlines and annotations.zones: map the PRIMARY chart (image 1, the entry-timeframe chart) onto a normalized 1000x1000 grid, x from 0 (left) to 1000 (right) and y from 0 (top) to 1000 (bottom) of that image. All coordinates must be relative to image 1 only, even if other images were provided for context.',
+    '- trendlines: straight lines from (x1,y1) to (x2,y2) — use these for the macro resistance/support line, trendlines/channel edges, entry line, stop-loss line, and each take-profit target. Provide exactly three take-profit trendlines at risk:reward ratios of approximately 1:2, 1:3, and 1:5 (label them "TP 1:2", "TP 1:3", "TP 1:5"). Label the entry line "Entry" and the stop line "Stop". Use color "blue" for entry, "red" for stop/resistance, "green" for targets/support, "gray" for other structure lines.',
+    '- zones: rectangles (x, y = top-left corner, width, height) — use these for demand/supply zones or an entry zone rather than a single line, when that fits the structure better.',
+    'If trade_found is false, annotations must be {} (empty, no trendlines or zones).',
     '',
-    'Keep reasoning under 120 words, plain text, no markdown, in everyday language a non-expert trader can follow. Respond only with JSON matching the required schema.',
+    'Respond only with JSON matching the required schema — no markdown, no text outside the JSON.',
     ...fundamentalsBlock
   ].join('\n');
 }
 
-async function analyzeChartImage({ imageBase64, mimeType, assetType, ticker }) {
-  const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',').pop() : imageBase64;
-  const fundamentalsText = assetType === 'stock' && ticker ? await fetchFundamentals(ticker) : null;
+async function analyzeChartImage({ images, assetType, ticker }) {
+  const imgs = images && images.length ? images : [];
+  if (!imgs.length) throw new Error('No chart image provided.');
 
-  const parts = [
-    { text: buildChartPrompt(assetType, fundamentalsText) },
-    { inline_data: { mime_type: mimeType || 'image/jpeg', data: cleanBase64 } }
-  ];
+  const fundamentalsText = assetType === 'stock' && ticker ? await fetchFundamentals(ticker) : null;
+  const imageLabels = imgs.map((img, i) => img.label || `chart ${i + 1}`);
+
+  const parts = [{ text: buildChartPrompt(assetType, fundamentalsText, imageLabels) }];
+  imgs.forEach((img, i) => {
+    parts.push({ text: `Image ${i + 1} (${imageLabels[i]}):` });
+    const cleanBase64 = img.imageBase64.includes(',') ? img.imageBase64.split(',').pop() : img.imageBase64;
+    parts.push({ inline_data: { mime_type: img.mimeType || 'image/jpeg', data: cleanBase64 } });
+  });
 
   const raw = await callGemini(parts, {
     responseMimeType: 'application/json',
@@ -204,8 +216,9 @@ app.post('/analyze-chart', async (req, res) => {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Not signed in.' });
 
-    const { imageBase64, mimeType, assetType, ticker } = req.body || {};
-    if (!imageBase64) return res.status(400).json({ error: 'Missing chart image.' });
+    const { images, assetType, ticker } = req.body || {};
+    if (!images || !images.length) return res.status(400).json({ error: 'Missing chart image.' });
+    if (images.length > 3) return res.status(400).json({ error: 'Send at most 3 chart images.' });
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } }
@@ -215,7 +228,7 @@ app.post('/analyze-chart', async (req, res) => {
       return res.status(401).json({ error: 'Not signed in.' });
     }
 
-    const result = await analyzeChartImage({ imageBase64, mimeType, assetType, ticker });
+    const result = await analyzeChartImage({ images, assetType, ticker });
     return res.json({ result });
   } catch (err) {
     console.error('analyze-chart error:', err);
@@ -257,7 +270,7 @@ async function handleTelegramUpdate(update) {
     const caption = (msg.caption || '').trim();
     const ticker = /^[A-Za-z.]{1,6}$/.test(caption) ? caption.toUpperCase() : null;
     const assetType = ticker ? 'stock' : '';
-    const result = await analyzeChartImage({ imageBase64: base64, mimeType, assetType, ticker });
+    const result = await analyzeChartImage({ images: [{ imageBase64: base64, mimeType, label: 'entry timeframe' }], assetType, ticker });
     await telegramSend(chatId, formatChartResultForTelegram(result), true);
   } catch (err) {
     console.error('telegram analyze error:', err);
@@ -290,17 +303,14 @@ function escTelegramHtml(s) {
 }
 
 function formatChartResultForTelegram(result) {
-  if (!result || !result.hasSetup) {
-    return 'No clear trade here.\n\n' + escTelegramHtml((result && result.reasoning) || 'No meaningful pattern or signal was visible in this chart.');
+  if (!result || !result.trade_found) {
+    return 'No trade.\n\n' + escTelegramHtml((result && result.statement) || 'No meaningful pattern or signal was visible in this chart.');
   }
   const lines = [
-    `<b>${escTelegramHtml((result.direction || '').toUpperCase())}</b> — ${escTelegramHtml(result.pattern || '')} (confidence ${escTelegramHtml(result.confidence || '')})`,
+    `<b>${escTelegramHtml((result.direction || '').toUpperCase())}</b> — ${escTelegramHtml(result.strategy_name || '')} (confidence ${escTelegramHtml(result.confidence_score)}/10)`,
+    (result.timeframe_confluence || []).length ? escTelegramHtml(result.timeframe_confluence.join(', ')) : null,
     '',
-    result.entry ? `Entry: ${escTelegramHtml(result.entry.price || 'n/a')}` : null,
-    result.stopLoss ? `Stop: ${escTelegramHtml(result.stopLoss.price || 'n/a')}` : null,
-    ...(result.targets || []).map((t) => `${escTelegramHtml(t.rr || 'Target')}: ${escTelegramHtml(t.price || 'n/a')}`),
-    '',
-    escTelegramHtml(result.reasoning || ''),
+    escTelegramHtml(result.statement || ''),
     result.invalidation ? `\nInvalidation: ${escTelegramHtml(result.invalidation)}` : null
   ].filter((l) => l !== null);
   return lines.join('\n');

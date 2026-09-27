@@ -356,16 +356,13 @@
   .chart-scan-drop:hover{color:var(--accent);border-color:var(--accent)}
   .chart-scan-canvas{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:var(--surface-sunken)}
   .chart-scan-canvas img{display:block;width:100%}
-  .chart-scan-line{position:absolute;left:0;right:0;height:0;border-top:2px dashed;pointer-events:none}
-  .chart-scan-line-label{position:absolute;left:8px;top:-10px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;font-family:var(--font-mono);white-space:nowrap}
-  .chart-scan-line.entry{border-color:var(--accent)}
-  .chart-scan-line.entry .chart-scan-line-label{background:var(--accent);color:var(--accent-ink)}
-  .chart-scan-line.stop{border-color:var(--loss)}
-  .chart-scan-line.stop .chart-scan-line-label{background:var(--loss);color:#fff}
-  .chart-scan-line.target{border-color:var(--profit)}
-  .chart-scan-line.target .chart-scan-line-label{background:var(--profit);color:#fff}
-  .chart-scan-line.level{border-color:var(--ink-400)}
-  .chart-scan-line.level .chart-scan-line-label{background:var(--ink-400);color:var(--surface)}
+  .chart-scan-canvas svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+  .chart-scan-extra-item{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .chart-scan-extra-item img{width:44px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--border);flex-shrink:0}
+  .chart-scan-extra-item input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--ink-900)}
+  .chart-scan-extra-item input:focus{border-color:var(--accent)}
+  .chart-scan-extra-item button{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface-sunken);color:var(--ink-400);font-size:15px;line-height:1;cursor:pointer;flex-shrink:0}
+  .chart-scan-extra-item button:hover{color:var(--loss);border-color:var(--loss)}
   .chart-scan-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
   .chart-scan-legend span{font-size:12px;font-family:var(--font-mono);padding:4px 9px;border-radius:6px;border:1px solid var(--border);color:var(--ink-600)}
   .chart-scan-legend span.confidence-A{color:var(--profit);border-color:var(--profit)}
@@ -720,7 +717,7 @@
     </section>
 
     <section class="view" id="view-ai">
-      <div class="view-head"><div><h1>AI</h1><div class="view-sub">Scan a chart screenshot for a trading opportunity</div></div></div>
+      <div class="view-head"><div><h1>AI</h1><div class="view-sub">Multi-timeframe scan for a trading opportunity</div></div></div>
       <div class="card">
         <div class="field" style="margin-bottom:14px">
           <label>Asset type</label>
@@ -744,10 +741,19 @@
           <div class="field-hint" style="margin-top:4px">PNG or JPG — include enough of the chart to show recent price action.</div>
         </div>
         <div id="chartScanPreviewWrap" style="display:none">
+          <div class="field" style="margin-bottom:10px">
+            <label>Timeframe (optional)</label>
+            <input type="text" id="chartScanPrimaryLabel" placeholder="e.g. 15m, 1H, 4H — this is your entry chart">
+          </div>
           <div class="chart-scan-canvas" id="chartScanCanvas">
             <img id="chartScanImg" alt="Uploaded chart">
+            <svg id="chartScanSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
           </div>
           <div class="chart-scan-legend" id="chartScanLegend"></div>
+          <div id="chartScanExtraList"></div>
+          <input type="file" id="chartScanExtraFile" accept="image/*" style="display:none">
+          <button type="button" class="btn" id="chartScanAddTimeframeBtn" style="margin-top:12px">+ Add another timeframe</button>
+          <div class="field-hint" style="margin-top:4px">Add a higher timeframe (e.g. 4H) for real multi-timeframe confluence — optional, up to 3 charts total.</div>
           <div class="drawer-actions" style="margin-top:14px">
             <button type="button" class="btn" id="chartScanChangeBtn">Choose different image</button>
             <button type="button" class="btn primary" id="chartScanBtn">Scan chart</button>
@@ -1910,14 +1916,17 @@
     return pub.data.publicUrl;
   }
 
-  /* ===================== AI chart scanner ===================== */
-  var chartScanBlob = null;
+  /* ===================== AI chart scanner (multi-timeframe) ===================== */
+  var chartScanImages = []; // [{blob, label, previewUrl}] — index 0 is the primary/entry chart
   function wireChartScan(){
     var fileInput = document.getElementById('chartScanFile');
     var drop = document.getElementById('chartScanDrop');
     var changeBtn = document.getElementById('chartScanChangeBtn');
     var scanBtn = document.getElementById('chartScanBtn');
     var assetTypeSel = document.getElementById('chartScanAssetType');
+    var addTfBtn = document.getElementById('chartScanAddTimeframeBtn');
+    var extraFileInput = document.getElementById('chartScanExtraFile');
+    var primaryLabelInput = document.getElementById('chartScanPrimaryLabel');
     if(!fileInput || !drop) return;
     assetTypeSel.addEventListener('change', function(){
       document.getElementById('chartScanTickerField').style.display = assetTypeSel.value==='stock' ? 'block' : 'none';
@@ -1929,34 +1938,88 @@
       fileInput.value = '';
       if(!file) return;
       resizeImageToBlob(file, function(blob){
-        chartScanBlob = blob;
-        document.getElementById('chartScanImg').src = URL.createObjectURL(blob);
+        chartScanImages = [{blob:blob, label:'', previewUrl:URL.createObjectURL(blob)}];
+        document.getElementById('chartScanImg').src = chartScanImages[0].previewUrl;
+        primaryLabelInput.value = '';
         document.getElementById('chartScanDrop').style.display = 'none';
         document.getElementById('chartScanPreviewWrap').style.display = 'block';
         document.getElementById('chartScanLegend').innerHTML = '';
         document.getElementById('chartScanResult').style.display = 'none';
         document.getElementById('chartScanResult').innerHTML = '';
-        clearChartScanLines();
+        clearChartScanAnnotations();
+        renderChartScanExtras();
+      }, 1100);
+    });
+    primaryLabelInput.addEventListener('input', function(){
+      if(chartScanImages[0]) chartScanImages[0].label = primaryLabelInput.value.trim();
+    });
+    addTfBtn.addEventListener('click', function(){
+      if(chartScanImages.length >= 3){ toast('Up to 3 timeframes only', 'loss'); return; }
+      extraFileInput.click();
+    });
+    extraFileInput.addEventListener('change', function(){
+      var file = extraFileInput.files[0];
+      extraFileInput.value = '';
+      if(!file) return;
+      resizeImageToBlob(file, function(blob){
+        chartScanImages.push({blob:blob, label:'', previewUrl:URL.createObjectURL(blob)});
+        renderChartScanExtras();
       }, 1100);
     });
     scanBtn.addEventListener('click', scanChart);
   }
-  function clearChartScanLines(){
-    var canvas = document.getElementById('chartScanCanvas');
-    canvas.querySelectorAll('.chart-scan-line').forEach(function(el){ el.remove(); });
+  function renderChartScanExtras(){
+    var list = document.getElementById('chartScanExtraList');
+    var extras = chartScanImages.slice(1);
+    if(!extras.length){ list.innerHTML=''; return; }
+    list.innerHTML = extras.map(function(img, i){
+      var idx = i+1;
+      return '<div class="chart-scan-extra-item">'+
+        '<img src="'+img.previewUrl+'">'+
+        '<input type="text" placeholder="e.g. 4H" value="'+esc(img.label)+'" data-extra-label="'+idx+'">'+
+        '<button type="button" data-extra-remove="'+idx+'">&times;</button>'+
+      '</div>';
+    }).join('');
+    list.querySelectorAll('[data-extra-label]').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        var idx = parseInt(inp.getAttribute('data-extra-label'),10);
+        chartScanImages[idx].label = inp.value.trim();
+      });
+    });
+    list.querySelectorAll('[data-extra-remove]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var idx = parseInt(btn.getAttribute('data-extra-remove'),10);
+        chartScanImages.splice(idx,1);
+        renderChartScanExtras();
+      });
+    });
   }
-  function addChartScanLine(type, label, y){
-    if(y===undefined || y===null || isNaN(y)) return;
-    y = Math.max(0, Math.min(1, y));
-    var canvas = document.getElementById('chartScanCanvas');
-    var line = document.createElement('div');
-    line.className = 'chart-scan-line '+type;
-    line.style.top = (y*100)+'%';
-    var lbl = document.createElement('span');
-    lbl.className = 'chart-scan-line-label';
-    lbl.textContent = label;
-    line.appendChild(lbl);
-    canvas.appendChild(line);
+  function clearChartScanAnnotations(){
+    document.getElementById('chartScanSvg').innerHTML = '';
+  }
+  function addChartScanTrendline(t){
+    if(t.x1==null||t.y1==null||t.x2==null||t.y2==null) return;
+    var svg = document.getElementById('chartScanSvg');
+    var line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', t.x1); line.setAttribute('y1', t.y1);
+    line.setAttribute('x2', t.x2); line.setAttribute('y2', t.y2);
+    line.setAttribute('stroke', t.color || '#4C8DFF');
+    line.setAttribute('stroke-width', '6');
+    line.setAttribute('stroke-dasharray', '16 10');
+    line.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(line);
+  }
+  function addChartScanZone(z){
+    if(z.x==null||z.y==null||z.width==null||z.height==null) return;
+    var svg = document.getElementById('chartScanSvg');
+    var rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', z.x); rect.setAttribute('y', z.y);
+    rect.setAttribute('width', z.width); rect.setAttribute('height', z.height);
+    rect.setAttribute('fill', z.color || '#4C8DFF');
+    rect.setAttribute('fill-opacity', '0.18');
+    rect.setAttribute('stroke', z.color || '#4C8DFF');
+    rect.setAttribute('stroke-width', '4');
+    svg.appendChild(rect);
   }
   function blobToBase64(blob){
     return new Promise(function(resolve, reject){
@@ -1966,25 +2029,35 @@
       reader.readAsDataURL(blob);
     });
   }
+  function confidenceClass(score){
+    score = parseFloat(score) || 0;
+    if(score >= 8) return 'A';
+    if(score >= 7) return 'B';
+    return 'C';
+  }
   async function scanChart(){
-    if(!chartScanBlob) return;
+    if(!chartScanImages.length) return;
     var btn = document.getElementById('chartScanBtn');
     btn.disabled = true; btn.textContent = 'Scanning… (may take up to a minute)';
     var resultBox = document.getElementById('chartScanResult');
     resultBox.style.display = 'none'; resultBox.innerHTML = '';
     document.getElementById('chartScanLegend').innerHTML = '';
-    clearChartScanLines();
+    clearChartScanAnnotations();
     try{
       var sess = await sb.auth.getSession();
       var tokenVal = sess.data.session ? sess.data.session.access_token : null;
       if(!tokenVal) throw new Error('Not signed in.');
-      var base64 = await blobToBase64(chartScanBlob);
       var assetType = document.getElementById('chartScanAssetType').value;
       var ticker = document.getElementById('chartScanTicker').value.trim().toUpperCase();
+      var images = [];
+      for(var i=0;i<chartScanImages.length;i++){
+        var b64 = await blobToBase64(chartScanImages[i].blob);
+        images.push({imageBase64:b64, mimeType:'image/jpeg', label: chartScanImages[i].label || undefined});
+      }
       var res = await fetch(AI_SERVICE_URL+'/analyze-chart', {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+tokenVal},
-        body: JSON.stringify({imageBase64: base64, mimeType:'image/jpeg', assetType: assetType, ticker: ticker || null})
+        body: JSON.stringify({images: images, assetType: assetType, ticker: ticker || null})
       });
       var data = await res.json().catch(function(){ return {}; });
       if(!res.ok) throw new Error(data.error || 'Scan failed.');
@@ -2000,31 +2073,26 @@
     var resultBox = document.getElementById('chartScanResult');
     var legend = document.getElementById('chartScanLegend');
     resultBox.style.display = 'block';
-    if(!result || !result.hasSetup){
-      resultBox.innerHTML = '<div class="chart-scan-no-setup ai-analysis-text"><h3>No clear trade here</h3><p>'+
-        esc((result && result.reasoning) || 'No meaningful pattern or signal was visible in this chart.')+'</p></div>';
+    clearChartScanAnnotations();
+    if(!result || !result.trade_found){
+      legend.innerHTML = '';
+      resultBox.innerHTML = '<div class="chart-scan-no-setup ai-analysis-text"><h3>No trade</h3><p>'+
+        esc((result && result.statement) || 'No meaningful pattern or signal was visible in this chart.')+'</p></div>';
       return;
     }
-    (result.keyLevels || []).forEach(function(lvl){
-      addChartScanLine('level', esc(lvl.label||'Level')+(lvl.price ? ' '+lvl.price : ''), lvl.y);
-    });
-    addChartScanLine('entry', 'Entry'+(result.entry && result.entry.price ? ' '+result.entry.price : ''), result.entry && result.entry.y);
-    addChartScanLine('stop', 'Stop'+(result.stopLoss && result.stopLoss.price ? ' '+result.stopLoss.price : ''), result.stopLoss && result.stopLoss.y);
-    (result.targets || []).forEach(function(t){
-      addChartScanLine('target', 'TP '+(t.rr||'')+(t.price ? ' '+t.price : ''), t.y);
-    });
+    var ann = result.annotations || {};
+    (ann.trendlines || []).forEach(addChartScanTrendline);
+    (ann.zones || []).forEach(addChartScanZone);
 
-    var legendItems = ['<span>Direction: '+esc((result.direction||'').toUpperCase())+'</span>'];
-    if(result.pattern && result.pattern.toLowerCase()!=='none') legendItems.push('<span>Pattern: '+esc(result.pattern)+'</span>');
-    if(result.confidence) legendItems.push('<span class="confidence-'+esc(result.confidence)+'">Confidence: '+esc(result.confidence)+'</span>');
-    if(result.entry) legendItems.push('<span>Entry'+(result.entry.price?': '+esc(result.entry.price):'')+'</span>');
-    if(result.stopLoss) legendItems.push('<span>Stop'+(result.stopLoss.price?': '+esc(result.stopLoss.price):'')+'</span>');
-    (result.targets || []).forEach(function(t){
-      legendItems.push('<span>'+esc(t.rr||'Target')+(t.price?': '+esc(t.price):'')+'</span>');
-    });
+    var legendItems = [
+      '<span>Direction: '+esc((result.direction||'').toUpperCase())+'</span>',
+      '<span>Strategy: '+esc(result.strategy_name||'n/a')+'</span>',
+      '<span class="confidence-'+confidenceClass(result.confidence_score)+'">Confidence: '+esc(result.confidence_score)+'/10</span>'
+    ];
+    (result.timeframe_confluence || []).forEach(function(c){ legendItems.push('<span>'+esc(c)+'</span>'); });
     legend.innerHTML = legendItems.join('');
 
-    var html = '<div class="ai-analysis-text" style="margin-top:16px">'+esc(result.reasoning||'').replace(/\n/g,'<br>')+'</div>';
+    var html = '<div class="ai-analysis-text" style="margin-top:16px">'+esc(result.statement||'').replace(/\n/g,'<br>')+'</div>';
     if(result.invalidation) html += '<div class="chart-scan-note">Invalidation: '+esc(result.invalidation)+'</div>';
     if(result.indicatorsNoted) html += '<div class="chart-scan-note">Indicators: '+esc(result.indicatorsNoted)+'</div>';
     resultBox.innerHTML = html;
