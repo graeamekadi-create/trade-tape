@@ -1494,44 +1494,36 @@
     return d;
   }
   function equityPoints(trades){
-    // Trades only carry a date, not a time, so same-day trades would all land on
-    // the exact same x position and draw as a vertical zigzag. Spread them out
-    // across a fraction of that day's width instead, ordered as entered.
-    var dayMs = 86400000;
-    var dateCounts = {};
-    trades.forEach(function(t){ dateCounts[t.date] = (dateCounts[t.date]||0)+1; });
-    var dateSeen = {};
+    // Spaced by trade sequence, not by calendar date: trades only carry a date
+    // (no time), and a sparse/bursty trading history makes a literal calendar-time
+    // axis either crowd several trades onto one x position (same-day trades) or
+    // squeeze a short real trading span into a sliver of a mostly-empty chart
+    // (e.g. a brand-new account a few days into the month). Even spacing per
+    // trade avoids both — this is also how most trading journals draw equity
+    // curves. The real date per point is kept for the hover tooltip and ticks.
     var cum = 0;
-    return trades.map(function(t){
+    return trades.map(function(t, i){
       cum += pnl(t);
-      var count = dateCounts[t.date];
-      var idx = (dateSeen[t.date] = (dateSeen[t.date]||0)+1);
-      var frac = count>1 ? (idx-1)/(count-1) - 0.5 : 0;
-      var baseT = new Date(t.date+'T00:00:00').getTime();
-      return {t: baseT + frac*dayMs*0.9, date:t.date, val:cum};
+      return {t: i+1, date: t.date, val: cum};
     });
   }
   function equityDomain(trades, pts){
-    var rawMin = new Date(trades[0].date+'T00:00:00').getTime();
-    var start = new Date(rawMin); start.setDate(1); start.setHours(0,0,0,0);
-    var minT = start.getTime();
-    var lastT = pts && pts.length ? pts[pts.length-1].t : minT;
-    var maxT = Math.max(lastT, minT+86400000);
-    return {minT:minT, maxT:maxT};
+    var maxT = pts && pts.length ? pts[pts.length-1].t : 1;
+    return {minT: 0, maxT: Math.max(maxT, 1)};
   }
-  function monthTicks(minT, maxT, maxLabels){
-    var cur = new Date(minT); cur.setDate(1); cur.setHours(0,0,0,0);
-    var end = new Date(maxT);
-    var months = [];
-    while(cur.getTime() <= end.getTime()){
-      months.push(cur.getTime());
-      cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+  function sampledDateTicks(raw, maxLabels){
+    var withDates = raw.filter(function(p){ return p.date; });
+    if(!withDates.length) return [];
+    var want = Math.min(maxLabels, withDates.length);
+    var picks = [], seen = {};
+    for(var i=0;i<want;i++){
+      var idx = want===1 ? withDates.length-1 : Math.round(i*(withDates.length-1)/(want-1));
+      var p = withDates[idx];
+      if(seen[p.date]) continue;
+      seen[p.date] = true;
+      picks.push(p);
     }
-    if(months.length > maxLabels){
-      var step = Math.ceil(months.length/maxLabels);
-      months = months.filter(function(_,i){ return i%step===0; });
-    }
-    return months;
+    return picks;
   }
   function equityCurveSVG(trades, height){
     var W=1000, H=height, padL=54, padR=14, padT=16, padB=30;
@@ -1561,10 +1553,10 @@
         '<text x="'+(padL-8)+'" y="'+(yy+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="var(--ink-400)" font-family="var(--font-mono)">'+fmtCompact(v)+'</text>';
     }).join('');
 
-    var months = monthTicks(dom.minT, dom.maxT, 7);
-    var monthSvg = months.map(function(mt){
-      var xx = x(mt);
-      return '<text x="'+xx.toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="10.5" fill="var(--ink-400)" font-family="var(--font-mono)">'+new Date(mt).toLocaleDateString(undefined,{month:'short'})+'</text>';
+    var dateTicks = sampledDateTicks(raw, 6);
+    var monthSvg = dateTicks.map(function(p){
+      var xx = x(p.t);
+      return '<text x="'+xx.toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="10.5" fill="var(--ink-400)" font-family="var(--font-mono)">'+fmtDateShort(p.date)+'</text>';
     }).join('');
 
     var lastPositive = raw[raw.length-1].val>=0;
@@ -1606,7 +1598,7 @@
       var px2 = rect.left + xOf(nearest.t)/W*rect.width - container.getBoundingClientRect().left;
       tip.style.left = px2+'px';
       tip.style.top = (e.clientY - container.getBoundingClientRect().top)+'px';
-      tip.innerHTML = (nearest.date ? fmtDate(nearest.date) : fmtDate(new Date(dom.minT).toISOString().slice(0,10)))+'<br><strong>'+fmtMoney(nearest.val,true)+'</strong> cumulative';
+      tip.innerHTML = (nearest.date ? fmtDate(nearest.date) : 'Start')+'<br><strong>'+fmtMoney(nearest.val,true)+'</strong> cumulative';
       tip.classList.add('show');
     });
     svg.addEventListener('mouseleave', function(){ tip.classList.remove('show'); });
