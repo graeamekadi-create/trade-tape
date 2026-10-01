@@ -1493,12 +1493,30 @@
     }
     return d;
   }
-  function equityDomain(trades){
+  function equityPoints(trades){
+    // Trades only carry a date, not a time, so same-day trades would all land on
+    // the exact same x position and draw as a vertical zigzag. Spread them out
+    // across a fraction of that day's width instead, ordered as entered.
+    var dayMs = 86400000;
+    var dateCounts = {};
+    trades.forEach(function(t){ dateCounts[t.date] = (dateCounts[t.date]||0)+1; });
+    var dateSeen = {};
+    var cum = 0;
+    return trades.map(function(t){
+      cum += pnl(t);
+      var count = dateCounts[t.date];
+      var idx = (dateSeen[t.date] = (dateSeen[t.date]||0)+1);
+      var frac = count>1 ? (idx-1)/(count-1) - 0.5 : 0;
+      var baseT = new Date(t.date+'T00:00:00').getTime();
+      return {t: baseT + frac*dayMs*0.9, date:t.date, val:cum};
+    });
+  }
+  function equityDomain(trades, pts){
     var rawMin = new Date(trades[0].date+'T00:00:00').getTime();
-    var rawMax = new Date(trades[trades.length-1].date+'T00:00:00').getTime();
     var start = new Date(rawMin); start.setDate(1); start.setHours(0,0,0,0);
     var minT = start.getTime();
-    var maxT = Math.max(rawMax, minT+86400000);
+    var lastT = pts && pts.length ? pts[pts.length-1].t : minT;
+    var maxT = Math.max(lastT, minT+86400000);
     return {minT:minT, maxT:maxT};
   }
   function monthTicks(minT, maxT, maxLabels){
@@ -1520,8 +1538,8 @@
     if(!trades.length){
       return '<svg viewBox="0 0 '+W+' '+H+'"><text x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle" fill="var(--ink-400)" font-size="13" font-family="var(--font-body)">No trades yet</text></svg>';
     }
-    var cum=0; var raw = trades.map(function(t){ cum+=pnl(t); return {t:new Date(t.date+'T00:00:00').getTime(), date:t.date, val:cum}; });
-    var dom = equityDomain(trades);
+    var raw = equityPoints(trades);
+    var dom = equityDomain(trades, raw);
     raw = [{t:dom.minT, date:null, val:0}].concat(raw);
     var vals = raw.map(function(p){return p.val;});
     var range = niceRange(vals);
@@ -1571,8 +1589,8 @@
     var svg = container.querySelector('svg');
     if(!svg || !trades.length) return;
     var tip = document.createElement('div'); tip.className='tooltip'; container.style.position='relative'; container.appendChild(tip);
-    var cum=0; var pts = trades.map(function(t){ cum+=pnl(t); return {t:new Date(t.date+'T00:00:00').getTime(), date:t.date, val:cum}; });
-    var dom = equityDomain(trades);
+    var pts = equityPoints(trades);
+    var dom = equityDomain(trades, pts);
     pts = [{t:dom.minT, date:null, val:0}].concat(pts);
     var W=1000, padL=54, padR=14;
     var xOf = function(t){ return padL + Math.max(0,Math.min(1,(t-dom.minT)/(dom.maxT-dom.minT)))*(W-padL-padR); };
