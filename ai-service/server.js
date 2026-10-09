@@ -1,8 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const webpush = require('web-push');
+const { createAlertWatcher } = require('./alerts');
 
 const PORT = process.env.PORT || 3000;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const SITE_URL = process.env.SITE_URL || 'https://trade-tape.onrender.com';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -398,6 +404,95 @@ async function callGemini(parts, generationConfig, attempt) {
   return text.trim();
 }
 
+/* ---------- price alerts + web push ---------- */
+const alertsEnabled = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+let supabaseAdmin = null;
+let watcher = null;
+
+async function sendPushToUser(userId, payload) {
+  const { data: subs, error } = await supabaseAdmin
+    .from('push_subscriptions')
+    .select('id,endpoint,p256dh,auth')
+    .eq('user_id', userId);
+  if (error) { console.error('push subscription lookup failed:', error.message); return 0; }
+  const body = JSON.stringify(payload);
+  const results = await Promise.all((subs || []).map(async (s) => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        body,
+        { TTL: 3600, urgency: 'high' }
+      );
+      return true;
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await supabaseAdmin.from('push_subscriptions').delete().eq('id', s.id);
+      } else {
+        console.error('push send failed:', err.statusCode, err.message);
+      }
+      return false;
+    }
+  }));
+  return results.filter(Boolean).length;
+}
+
+function requireAlerts(req, res, next) {
+  if (!alertsEnabled || !watcher) {
+    return res.status(503).json({ error: 'Price alerts are not configured on the server yet.' });
+  }
+  next();
+}
+
+app.get('/alerts/status', (req, res) => {
+  if (!alertsEnabled || !watcher) return res.json({ enabled: false });
+  res.json({ enabled: true, ...watcher.getStatus(), serverTime: Date.now() });
+});
+
+app.get('/alerts/symbols', requireAlerts, async (req, res) => {
+  const symbols = await watcher.getSymbols();
+  res.json({ symbols });
+});
+
+app.get('/alerts/price', requireAlerts, async (req, res) => {
+  const price = await watcher.getPrice(String(req.query.symbol || ''));
+  if (!price) return res.status(404).json({ error: 'No live price available for that symbol right now.' });
+  res.json({ symbol: req.query.symbol, quote: price.quote, pip: price.pip });
+});
+
+app.post('/alerts/refresh', requireAlerts, async (req, res) => {
+  await watcher.refresh();
+  res.json({ ok: true });
+});
+
+app.post('/push/test', requireAlerts, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token) return res.status(401).json({ error: 'Not signed in.' });
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data || !data.user) return res.status(401).json({ error: 'Not signed in.' });
+    const delivered = await sendPushToUser(data.user.id, {
+      title: 'Trade Tape notifications are on',
+      body: 'You will get a message like this when a price alert triggers.',
+      tag: 'push-test',
+      url: '/'
+    });
+    if (!delivered) return res.status(404).json({ error: 'No device is subscribed for this account yet.' });
+    res.json({ delivered });
+  } catch (err) {
+    console.error('push test error:', err);
+    res.status(500).json({ error: err.message || 'Unexpected server error.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Trade Tape AI service listening on port ${PORT}`);
+  if (alertsEnabled) {
+    webpush.setVapidDetails(SITE_URL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    watcher = createAlertWatcher({ supabase: supabaseAdmin, sendPush: sendPushToUser });
+    watcher.start();
+  } else {
+    console.log('Price alerts disabled: set SUPABASE_SERVICE_KEY, VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable.');
+  }
 });

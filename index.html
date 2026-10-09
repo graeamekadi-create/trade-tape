@@ -125,6 +125,31 @@
   }
   .sidebar-add:hover{filter:brightness(1.08)}
   .sidebar-add, .btn.primary, .tour-next{background:var(--accent)}
+  .sidebar-alerts{
+    margin-top:8px;display:flex;align-items:center;justify-content:center;gap:7px;
+    background:var(--surface-sunken);color:var(--ink-600);border:1px solid var(--border);border-radius:9px;
+    padding:9px 12px;font-weight:600;font-size:13px;cursor:pointer;
+  }
+  .sidebar-alerts:hover{color:var(--ink-900);border-color:var(--border-strong)}
+  .topbar-right{display:flex;align-items:center;gap:10px}
+  .topbar-bell{flex:none;width:32px;height:32px;border-radius:50%;border:none;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+
+  .alerts-msg{display:none;font-size:12.5px;color:var(--ink-600);background:var(--accent-soft);border-radius:9px;padding:10px 12px;margin-bottom:14px;line-height:1.5}
+  .alerts-msg.show{display:block}
+  .alerts-msg.bad{background:var(--loss-soft);color:var(--loss)}
+  .alerts-box{background:var(--surface-sunken);border:1px solid var(--border);border-radius:12px;padding:15px 16px;margin-bottom:16px}
+  .alerts-box-title{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--ink-900)}
+  .alerts-list-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-400);margin:20px 0 8px}
+  .alert-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface-sunken)}
+  .alert-row-main{flex:1;min-width:0}
+  .alert-row-name{font-size:13.5px;font-weight:600;color:var(--ink-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .alert-row-sub{font-size:12px;color:var(--ink-400);font-family:var(--font-mono);margin-top:2px}
+  .alert-row-dir{font-weight:700}
+  .alert-row-dir.above{color:var(--profit)}
+  .alert-row-dir.below{color:var(--loss)}
+  .alert-row-del{flex:none;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:none;color:var(--ink-400);font-size:15px;line-height:1;cursor:pointer}
+  .alert-row-del:hover{color:var(--loss);border-color:var(--loss)}
+  .alerts-empty{font-size:13px;color:var(--ink-400);padding:4px 2px}
 
   .sidebar-stat{
     padding:14px;border-radius:10px;background:var(--surface-sunken);
@@ -541,6 +566,10 @@
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       New trade
     </button>
+    <button class="sidebar-alerts" id="alertsBtnSide">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 19a2 2 0 004 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      Price alerts
+    </button>
     <div class="sidebar-stat" style="margin-top:auto">
       <div class="label">Net P&amp;L · all time</div>
       <div class="value num" id="sideNetPnl">$0.00</div>
@@ -552,7 +581,12 @@
       <svg width="22" height="22" viewBox="0 0 26 26" fill="none"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M6 17.5L10.5 10L14 14.5L20 7" stroke="var(--accent-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div class="brand-name" style="font-size:15px">Trade Tape</div>
     </div>
-    <button class="topbar-avatar" id="topbarAvatarBtn" title="Account"></button>
+    <div class="topbar-right">
+      <button class="topbar-bell" id="alertsBtnTop" title="Price alerts" aria-label="Price alerts">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 19a2 2 0 004 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button class="topbar-avatar" id="topbarAvatarBtn" title="Account"></button>
+    </div>
   </div>
   <nav class="bottom-nav" id="navMobile"></nav>
 
@@ -857,6 +891,46 @@
       </button>
     </div>
     <div id="dayDetailBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="alertsOverlay">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>Price alerts</h2>
+      <button class="close-btn" id="closeAlerts">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="alerts-msg" id="alertsServiceMsg"></div>
+
+    <div class="alerts-box">
+      <div class="alerts-box-title">Phone notifications</div>
+      <div class="field-hint" id="pushStateText">Checking…</div>
+      <div class="drawer-actions" style="margin-top:12px">
+        <button type="button" class="btn primary" id="pushEnableBtn">Turn on notifications</button>
+        <button type="button" class="btn" id="pushTestBtn" style="display:none">Send test</button>
+      </div>
+    </div>
+
+    <form id="alertForm" class="alerts-box">
+      <div class="alerts-box-title">New alert</div>
+      <div class="field">
+        <label for="alertSymbol">Market</label>
+        <select id="alertSymbol"><option>Loading markets…</option></select>
+      </div>
+      <div class="field" style="margin-bottom:6px">
+        <label for="alertTarget">Notify me when the price reaches</label>
+        <input type="number" id="alertTarget" step="any" inputmode="decimal" placeholder="e.g. 5010.50">
+      </div>
+      <div class="field-hint" id="alertLive" style="margin-bottom:12px">Current price: —</div>
+      <button type="submit" class="btn primary" id="alertAddBtn" style="width:100%">Set alert</button>
+    </form>
+
+    <div class="alerts-list-title">Active alerts</div>
+    <div id="alertsActive"></div>
+    <div class="alerts-list-title">Recently triggered</div>
+    <div id="alertsTriggered"></div>
   </div>
 </div>
 
@@ -1995,6 +2069,240 @@
     });
   }
 
+  /* ===================== price alerts + push notifications ===================== */
+  var VAPID_PUBLIC_KEY = 'BFdT6OA8Iagemn55QfANgDi_8vb5Du7evx25Y4tzjqdzCsoU99ddiK-D7M83sX3O9Ap2R4lhn85Vdln4389Tl_A';
+  var alertSymbols = [];
+  var alertsTimer = null;
+  var ALERT_GROUP_ORDER = ['Synthetic indices','Forex','Crypto','Stock indices','Commodities'];
+
+  function pushSupported(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  function urlBase64ToUint8Array(b64){
+    var pad = '='.repeat((4 - b64.length % 4) % 4);
+    var raw = atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+    var out = new Uint8Array(raw.length);
+    for(var i=0;i<raw.length;i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function setAlertsMsg(text, bad){
+    var el = document.getElementById('alertsServiceMsg');
+    el.textContent = text || '';
+    el.className = 'alerts-msg'+(text ? ' show' : '')+(bad ? ' bad' : '');
+  }
+  async function aiGet(path){
+    var res = await fetch(AI_SERVICE_URL+path);
+    var data = await res.json().catch(function(){ return {}; });
+    if(!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+  async function getAccessToken(){
+    var s = await sb.auth.getSession();
+    return s.data.session ? s.data.session.access_token : null;
+  }
+  async function getDeviceSubscription(){
+    if(!pushSupported()) return null;
+    var reg = await navigator.serviceWorker.getRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+  async function removeThisDevicePush(){
+    try{
+      var sub = await getDeviceSubscription();
+      if(sub) await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+    }catch(e){ /* signing out regardless */ }
+  }
+  async function signOutUser(){
+    await removeThisDevicePush();
+    await sb.auth.signOut();
+  }
+
+  function openAlerts(){
+    document.getElementById('alertsOverlay').classList.add('open');
+    if(!alertSymbols.length) setAlertsMsg('Connecting to the alert service… this can take up to a minute if it was asleep.');
+    refreshPushState();
+    loadAlertSymbols().then(pollAlertPrice);
+    loadAlertsList();
+    clearInterval(alertsTimer);
+    alertsTimer = setInterval(function(){ pollAlertPrice(); loadAlertsList(); }, 6000);
+  }
+  function closeAlerts(){
+    document.getElementById('alertsOverlay').classList.remove('open');
+    clearInterval(alertsTimer);
+  }
+  async function loadAlertSymbols(){
+    if(alertSymbols.length){ setAlertsMsg(''); return; }
+    try{
+      var data = await aiGet('/alerts/symbols');
+      alertSymbols = data.symbols || [];
+      if(!alertSymbols.length) throw new Error('No markets came back');
+      var sel = document.getElementById('alertSymbol');
+      var groups = {};
+      alertSymbols.forEach(function(s){ (groups[s.marketName] = groups[s.marketName] || []).push(s); });
+      var names = Object.keys(groups).sort(function(a,b){
+        var ia = ALERT_GROUP_ORDER.indexOf(a), ib = ALERT_GROUP_ORDER.indexOf(b);
+        return (ia<0?99:ia) - (ib<0?99:ib);
+      });
+      sel.innerHTML = names.map(function(g){
+        return '<optgroup label="'+esc(g)+'">'+groups[g].map(function(s){
+          return '<option value="'+esc(s.symbol)+'">'+esc(s.name)+(s.open?'':' (closed)')+'</option>';
+        }).join('')+'</optgroup>';
+      }).join('');
+      if(alertSymbols.some(function(s){ return s.symbol==='R_10'; })) sel.value = 'R_10';
+      setAlertsMsg('');
+    }catch(err){
+      setAlertsMsg('Could not reach the alert service: '+err.message+'. Close this and try again in a moment.', true);
+    }
+  }
+  async function pollAlertPrice(){
+    var sel = document.getElementById('alertSymbol');
+    var sym = sel.value;
+    if(!sym || !alertSymbols.length) return;
+    var live = document.getElementById('alertLive');
+    try{
+      var p = await aiGet('/alerts/price?symbol='+encodeURIComponent(sym));
+      if(sel.value !== sym) return;
+      live.textContent = 'Current price: '+Number(p.quote).toFixed(p.pip);
+    }catch(err){
+      if(sel.value === sym) live.textContent = 'Current price: unavailable (the market may be closed)';
+    }
+  }
+  async function submitAlert(e){
+    e.preventDefault();
+    var sel = document.getElementById('alertSymbol');
+    var input = document.getElementById('alertTarget');
+    var btn = document.getElementById('alertAddBtn');
+    var sym = sel.value;
+    var target = parseFloat(input.value);
+    var meta = alertSymbols.filter(function(s){ return s.symbol===sym; })[0];
+    if(!sym || !meta){ toast('Pick a market first', 'loss'); return; }
+    if(!(target > 0)){ toast('Enter a price above 0', 'loss'); return; }
+    btn.disabled = true;
+    try{
+      var p = await aiGet('/alerts/price?symbol='+encodeURIComponent(sym));
+      var curR = Number(p.quote.toFixed(p.pip)), tgtR = Number(target.toFixed(p.pip));
+      if(curR === tgtR) throw new Error('That is already the current price.');
+      var direction = tgtR > curR ? 'above' : 'below';
+      var res = await sb.from('price_alerts').insert({user_id: currentUser.id, symbol: sym, symbol_name: meta.name, target: target, direction: direction});
+      if(res.error) throw new Error(res.error.message);
+      input.value = '';
+      fetch(AI_SERVICE_URL+'/alerts/refresh', {method:'POST'}).catch(function(){});
+      toast('Alert set: '+meta.name+' '+direction+' '+target);
+      var sub = await getDeviceSubscription();
+      if(!sub) setAlertsMsg('Alert saved, but notifications are off on this device. Turn them on above to get it on your phone.', false);
+      loadAlertsList();
+    }catch(err){
+      toast('Could not set alert: '+(err.message||'unknown error'), 'loss');
+    }
+    btn.disabled = false;
+  }
+  function alertRowHTML(a, triggered){
+    var dir = a.direction==='above' ? 'above' : 'below';
+    var sub = '<span class="alert-row-dir '+dir+'">'+(dir==='above'?'↑ above ':'↓ below ')+esc(a.target)+'</span>';
+    if(triggered){
+      var when = a.triggered_at ? new Date(a.triggered_at).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      sub += ' · hit '+esc(a.triggered_price)+' · '+esc(when);
+    }
+    return '<div class="alert-row"><div class="alert-row-main"><div class="alert-row-name">'+esc(a.symbol_name||a.symbol)+'</div>'+
+      '<div class="alert-row-sub">'+sub+'</div></div>'+
+      '<button type="button" class="alert-row-del" data-del-alert="'+esc(a.id)+'" title="Remove">&times;</button></div>';
+  }
+  async function loadAlertsList(){
+    var res = await sb.from('price_alerts').select('*').order('created_at',{ascending:false}).limit(80);
+    if(res.error) return;
+    var rows = res.data || [];
+    var active = rows.filter(function(a){ return a.status==='active'; });
+    var trig = rows.filter(function(a){ return a.status==='triggered'; })
+      .sort(function(a,b){ return String(b.triggered_at).localeCompare(String(a.triggered_at)); }).slice(0,8);
+    document.getElementById('alertsActive').innerHTML = active.length
+      ? active.map(function(a){ return alertRowHTML(a,false); }).join('')
+      : '<div class="alerts-empty">No active alerts. Set one above.</div>';
+    document.getElementById('alertsTriggered').innerHTML = trig.length
+      ? trig.map(function(a){ return alertRowHTML(a,true); }).join('')
+      : '<div class="alerts-empty">Nothing has triggered yet.</div>';
+  }
+  async function refreshPushState(){
+    var text = document.getElementById('pushStateText');
+    var enableBtn = document.getElementById('pushEnableBtn');
+    var testBtn = document.getElementById('pushTestBtn');
+    enableBtn.style.display = 'none'; testBtn.style.display = 'none';
+    if(!pushSupported()){
+      text.textContent = 'This browser cannot receive push notifications. On Android use Chrome; on iPhone, add the app to your home screen first.';
+      return;
+    }
+    if(Notification.permission === 'denied'){
+      text.textContent = 'Notifications are blocked for this site. Allow them in your browser’s site settings, then reopen this screen.';
+      return;
+    }
+    var sub = await getDeviceSubscription();
+    var saved = false;
+    if(sub){
+      var r = await sb.from('push_subscriptions').select('id').eq('endpoint', sub.endpoint).limit(1);
+      saved = !!(r.data && r.data.length);
+    }
+    if(sub && saved){
+      text.textContent = 'On for this device. Alerts will reach you even when the app is closed.';
+      testBtn.style.display = '';
+    } else {
+      text.textContent = 'Off for this device. Turn them on to get alerts on your phone even when the app is closed.';
+      enableBtn.style.display = '';
+    }
+  }
+  async function enablePush(){
+    var btn = document.getElementById('pushEnableBtn');
+    btn.disabled = true;
+    try{
+      var perm = await Notification.requestPermission();
+      if(perm !== 'granted') throw new Error('Permission was not granted.');
+      var reg = await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.getSubscription();
+      if(!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
+      var j = sub.toJSON();
+      var ins = await sb.from('push_subscriptions').insert({user_id: currentUser.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth});
+      if(ins.error && ins.error.code !== '23505') throw new Error(ins.error.message);
+      setAlertsMsg('');
+      toast('Notifications turned on');
+    }catch(err){
+      toast('Could not turn on notifications: '+(err.message||'unknown error'), 'loss');
+    }
+    btn.disabled = false;
+    refreshPushState();
+  }
+  async function testPush(){
+    var btn = document.getElementById('pushTestBtn');
+    btn.disabled = true;
+    try{
+      var token = await getAccessToken();
+      if(!token) throw new Error('Not signed in.');
+      var res = await fetch(AI_SERVICE_URL+'/push/test', {method:'POST', headers:{'Authorization':'Bearer '+token}});
+      var data = await res.json().catch(function(){ return {}; });
+      if(!res.ok) throw new Error(data.error || 'Test failed');
+      toast('Test sent. Check your notifications.');
+    }catch(err){
+      toast('Test failed: '+(err.message||'unknown error'), 'loss');
+    }
+    btn.disabled = false;
+  }
+  function wireAlerts(){
+    ['alertsBtnTop','alertsBtnSide'].forEach(function(id){
+      var b = document.getElementById(id);
+      if(b) b.addEventListener('click', openAlerts);
+    });
+    document.getElementById('closeAlerts').addEventListener('click', closeAlerts);
+    document.getElementById('alertsOverlay').addEventListener('click', function(e){ if(e.target.id==='alertsOverlay') closeAlerts(); });
+    document.getElementById('alertForm').addEventListener('submit', submitAlert);
+    document.getElementById('alertSymbol').addEventListener('change', function(){
+      document.getElementById('alertLive').textContent = 'Current price: …';
+      pollAlertPrice();
+    });
+    document.getElementById('pushEnableBtn').addEventListener('click', enablePush);
+    document.getElementById('pushTestBtn').addEventListener('click', testPush);
+    document.getElementById('alertsOverlay').addEventListener('click', async function(e){
+      var del = e.target.closest('[data-del-alert]');
+      if(!del) return;
+      var res = await sb.from('price_alerts').delete().eq('id', del.getAttribute('data-del-alert'));
+      if(res.error){ toast('Could not remove alert: '+res.error.message, 'loss'); return; }
+      loadAlertsList();
+    });
+  }
+
   /* ===================== AI chart scanner (multi-timeframe) ===================== */
   var chartScanImages = []; // [{blob, label, previewUrl}] — index 0 is the primary/entry chart
   function wireChartScan(){
@@ -2307,7 +2615,7 @@
       ? '<img src="'+avatarUrl+'" class="avatar-md">'
       : '<span class="avatar-md avatar-fallback">'+esc((label[0]||'?').toUpperCase())+'</span>';
     el.innerHTML = '<span style="display:flex;align-items:center;gap:8px;overflow:hidden" title="'+esc(currentUser.email)+'">'+avatarHtml+'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(label)+'</span></span><button type="button" id="logoutBtn">Sign out</button>';
-    document.getElementById('logoutBtn').addEventListener('click', async function(){ await sb.auth.signOut(); });
+    document.getElementById('logoutBtn').addEventListener('click', signOutUser);
 
     var topbarBtn = document.getElementById('topbarAvatarBtn');
     topbarBtn.innerHTML = avatarUrl
@@ -2457,6 +2765,7 @@
     renderNav();
     wireChartScan();
     wirePasteUpload();
+    wireAlerts();
 
     document.getElementById('authTabLogin').addEventListener('click', function(){ setAuthMode('login'); });
     document.getElementById('authTabSignup').addEventListener('click', function(){ setAuthMode('signup'); });
@@ -2728,7 +3037,7 @@
     document.getElementById('exportCsvBtn').addEventListener('click', exportCSV);
     document.getElementById('importBtn').addEventListener('click', function(){ document.getElementById('importFile').click(); });
     document.getElementById('importFile').addEventListener('change', function(e){ if(e.target.files[0]) handleImportFile(e.target.files[0]); });
-    document.getElementById('dataSignOutBtn').addEventListener('click', async function(){ await sb.auth.signOut(); });
+    document.getElementById('dataSignOutBtn').addEventListener('click', signOutUser);
     document.getElementById('dataChangeAvatarBtn').addEventListener('click', function(){ document.getElementById('dataAvatarFile').click(); });
     document.getElementById('dataAvatarFile').addEventListener('change', function(e){
       var file = e.target.files[0];
