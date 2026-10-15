@@ -322,6 +322,24 @@
   .donut-legend-item .lbl{font-size:10.5px;color:var(--ink-400);text-transform:uppercase;letter-spacing:.05em}
   .donut-legend-item .val{font-size:13px;font-weight:700;color:var(--ink-900);font-family:var(--font-mono)}
 
+  /* ---------- Overview screenshot slideshow ---------- */
+  .ss-viewport{overflow:hidden;border-radius:12px;background:var(--surface-sunken);border:1px solid var(--border)}
+  .ss-track{display:flex;transition:transform .6s cubic-bezier(.22,1,.36,1);will-change:transform}
+  .ss-track.no-anim{transition:none}
+  .ss-slide{flex:0 0 100%;position:relative;height:250px;cursor:pointer}
+  .ss-slide img{width:100%;height:100%;object-fit:contain;display:block}
+  .ss-cap{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:8px;padding:30px 12px 10px;background:linear-gradient(to top,rgba(5,9,18,.9),transparent)}
+  .ss-sym{font-weight:700;font-size:14px;color:#fff}
+  .ss-bar{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:12px}
+  .ss-dots{display:flex;gap:6px;align-items:center}
+  .ss-dot{width:7px;height:7px;border-radius:99px;background:var(--border-strong);border:none;padding:0;cursor:pointer;transition:width .3s,background .3s}
+  .ss-dot.active{background:var(--accent);width:18px}
+  .ss-count{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-400)}
+  .ss-pause{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--surface-sunken);color:var(--ink-600);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .ss-pause:hover{color:var(--ink-900);border-color:var(--border-strong)}
+  .ss-empty{height:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--ink-400);font-size:13px;padding:0 20px;border:1px dashed var(--border-strong);border-radius:12px}
+  @media (prefers-reduced-motion:reduce){ .ss-track{transition:none} }
+
   /* ---------- P&L calendar ---------- */
   .cal-nav{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px}
   .cal-label{font-family:var(--font-display);font-weight:600;font-size:15px;min-width:170px;text-align:center}
@@ -618,7 +636,13 @@
       <div class="tiles" id="overviewTiles"></div>
       <div class="grid-2">
         <div class="card">
-          <div class="card-head"><h3>Overall performance</h3></div>
+          <div class="card-head"><h3>Overall performance</h3>
+            <div class="seg" id="ovViewSeg">
+              <button type="button" data-view="shots">Screenshots</button>
+              <button type="button" data-view="chart">Chart</button>
+            </div>
+          </div>
+          <div id="ovShots"></div>
           <div id="ovDonut"></div>
         </div>
         <div class="card">
@@ -1113,6 +1137,7 @@
     });
   }
   function switchTab(id){
+    stopSlideshow();
     activeTab = id;
     document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
     document.getElementById('view-'+id).classList.add('active');
@@ -1147,11 +1172,130 @@
     document.getElementById('overviewTiles').innerHTML = tiles.map(tileHTML).join('');
 
     document.getElementById('ovDonut').innerHTML = overallDonutSVG(stats) + (stats.total>0 ? overallLegendHTML(stats) : '');
+    renderOverviewView();
 
     document.getElementById('ovGoalCard').innerHTML = goalCardHTML();
 
     var recent = trades.slice(-5).reverse();
     document.getElementById('ovRecent').innerHTML = recent.length ? recent.map(recentRowHTML).join('') : '<div class="empty">No trades yet. Log your first one to see it here.</div>';
+  }
+  /* ===================== overview screenshot slideshow ===================== */
+  var ovView = 'shots';
+  try{ var savedOvView = localStorage.getItem('tt_ov_view'); if(savedOvView==='chart' || savedOvView==='shots') ovView = savedOvView; }catch(e){ /* storage unavailable */ }
+  var SS_STEP_MS = 3000;
+  var ssTimer = null, ssIndex = 0, ssCount = 0, ssPaused = false, ssHover = false;
+  var ssReduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var PAUSE_ICON = '<svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="1.5" width="3" height="9" rx="1"/><rect x="7" y="1.5" width="3" height="9" rx="1"/></svg>';
+  var PLAY_ICON = '<svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7.5-4.5z"/></svg>';
+
+  function stopSlideshow(){ clearInterval(ssTimer); ssTimer = null; }
+  function slideItems(){
+    var items = (state.screenshotItems || []).map(function(s){
+      var t = findTrade(s.trade_id);
+      return t ? {url:s.url, trade:t, created:s.created_at||''} : null;
+    }).filter(Boolean);
+    items.sort(function(a,b){
+      if(a.trade.date!==b.trade.date) return a.trade.date<b.trade.date ? 1 : -1;
+      return String(b.created).localeCompare(String(a.created));
+    });
+    return items.slice(0, 30);
+  }
+  function slideHTML(item){
+    var t = item.trade;
+    return '<div class="ss-slide" data-trade="'+esc(t.id)+'">'+
+      '<img src="'+esc(item.url)+'" alt="'+esc(t.symbol)+' trade screenshot" draggable="false">'+
+      '<div class="ss-cap"><span class="ss-sym">'+esc(t.symbol)+'</span><span class="pill">'+esc(t.side)+'</span>'+pnlBadge(pnl(t))+'</div>'+
+      '</div>';
+  }
+  function updateSlideBar(){
+    if(!ssCount) return;
+    var real = ssIndex % ssCount;
+    document.querySelectorAll('#ovShots .ss-dot').forEach(function(d, i){ d.classList.toggle('active', i===real); });
+    var c = document.getElementById('ssCount');
+    if(c) c.textContent = (real+1)+' / '+ssCount;
+  }
+  function ssGoto(i, animate){
+    var track = document.getElementById('ssTrack');
+    if(!track) return;
+    track.classList.toggle('no-anim', !animate);
+    track.style.transform = 'translateX(-'+(i*100)+'%)';
+    ssIndex = i;
+    updateSlideBar();
+  }
+  function ssNext(){
+    var track = document.getElementById('ssTrack');
+    if(!track || document.hidden || ssPaused || ssHover || ssCount<2) return;
+    if(ssReduceMotion){ ssGoto((ssIndex+1) % ssCount, false); return; }
+    ssGoto(ssIndex+1, true);
+    if(ssIndex===ssCount){
+      // landed on the cloned first slide; snap back to the real one without animating
+      setTimeout(function(){
+        if(ssIndex!==ssCount) return;
+        ssGoto(0, false);
+        void track.offsetWidth;
+        track.classList.remove('no-anim');
+      }, 700);
+    }
+  }
+  function renderOverviewShots(){
+    var box = document.getElementById('ovShots');
+    stopSlideshow();
+    var items = slideItems();
+    ssCount = items.length; ssIndex = 0; ssHover = false;
+    if(!items.length){
+      box.innerHTML = '<div class="ss-empty"><div>No screenshots yet. Add chart screenshots to your trades and they will slide here.</div><button type="button" class="btn" id="ssShowChart">Show chart instead</button></div>';
+      document.getElementById('ssShowChart').addEventListener('click', function(){ setOvView('chart'); });
+      return;
+    }
+    var slides = items.map(slideHTML);
+    var many = items.length > 1;
+    box.innerHTML = '<div class="ss" id="ssRoot" tabindex="0" role="region" aria-roledescription="carousel" aria-label="Trade screenshots">'+
+      '<div class="ss-viewport"><div class="ss-track" id="ssTrack">'+slides.join('')+(many ? slides[0] : '')+'</div></div>'+
+      '<div class="ss-bar">'+
+        (many && items.length<=8 ? '<div class="ss-dots">'+items.map(function(_,i){ return '<button type="button" class="ss-dot'+(i===0?' active':'')+'" data-ss="'+i+'" aria-label="Show screenshot '+(i+1)+'"></button>'; }).join('')+'</div>' : '')+
+        '<span class="ss-count" id="ssCount">1 / '+items.length+'</span>'+
+        (many ? '<button type="button" class="ss-pause" id="ssPause" aria-label="Pause slideshow">'+PAUSE_ICON+'</button>' : '')+
+      '</div></div>';
+    ssPaused = ssReduceMotion;
+    var root = document.getElementById('ssRoot');
+    var pauseBtn = document.getElementById('ssPause');
+    function syncPauseBtn(){
+      if(!pauseBtn) return;
+      pauseBtn.innerHTML = ssPaused ? PLAY_ICON : PAUSE_ICON;
+      pauseBtn.setAttribute('aria-label', ssPaused ? 'Play slideshow' : 'Pause slideshow');
+    }
+    syncPauseBtn();
+    if(pauseBtn) pauseBtn.addEventListener('click', function(){ ssPaused = !ssPaused; syncPauseBtn(); });
+    root.addEventListener('pointerenter', function(e){ if(e.pointerType==='mouse') ssHover = true; });
+    root.addEventListener('pointerleave', function(e){ if(e.pointerType==='mouse') ssHover = false; });
+    root.addEventListener('focusin', function(){ ssHover = true; });
+    root.addEventListener('focusout', function(){ ssHover = false; });
+    root.addEventListener('keydown', function(e){
+      if(e.key!=='ArrowRight' && e.key!=='ArrowLeft') return;
+      var real = ssIndex % ssCount;
+      ssGoto(e.key==='ArrowRight' ? (real+1)%ssCount : (real-1+ssCount)%ssCount, !ssReduceMotion);
+    });
+    root.querySelectorAll('.ss-dot').forEach(function(d){
+      d.addEventListener('click', function(){ ssGoto(parseInt(d.getAttribute('data-ss'),10), !ssReduceMotion); });
+    });
+    root.querySelectorAll('.ss-slide').forEach(function(el){
+      el.addEventListener('click', function(){
+        var t = findTrade(el.getAttribute('data-trade'));
+        if(t) openTradeDetail(t);
+      });
+    });
+    if(many) ssTimer = setInterval(ssNext, SS_STEP_MS);
+  }
+  function renderOverviewView(){
+    document.querySelectorAll('#ovViewSeg button').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-view')===ovView); });
+    document.getElementById('ovShots').style.display = ovView==='shots' ? 'block' : 'none';
+    document.getElementById('ovDonut').style.display = ovView==='chart' ? 'block' : 'none';
+    if(ovView==='shots') renderOverviewShots(); else stopSlideshow();
+  }
+  function setOvView(v){
+    ovView = v;
+    try{ localStorage.setItem('tt_ov_view', v); }catch(e){ /* storage unavailable */ }
+    renderOverviewView();
   }
   function overallDonutSVG(stats){
     var size=200, r=76, sw=24, cx=100, cy=100;
@@ -1865,11 +2009,12 @@
   }
   async function loadScreenshotCounts(){
     var ids = state.trades.map(function(t){ return t.id; });
-    if(!ids.length){ state.screenshotCounts = {}; return; }
-    var res = await sb.from('trade_screenshots').select('trade_id').in('trade_id', ids);
+    if(!ids.length){ state.screenshotCounts = {}; state.screenshotItems = []; return; }
+    var res = await sb.from('trade_screenshots').select('trade_id,url,created_at').in('trade_id', ids);
     var counts = {};
     if(res.data) res.data.forEach(function(row){ counts[row.trade_id] = (counts[row.trade_id]||0)+1; });
     state.screenshotCounts = counts;
+    state.screenshotItems = res.data || [];
   }
   async function loadAllData(){
     await loadTrades();
@@ -2932,6 +3077,10 @@
     wireChartScan();
     wirePasteUpload();
     wireAlerts();
+    document.getElementById('ovViewSeg').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-view]');
+      if(b) setOvView(b.getAttribute('data-view'));
+    });
     ['authPassword','recoveryPassword','recoveryPassword2'].forEach(attachPasswordToggle);
 
     document.getElementById('authTabLogin').addEventListener('click', function(){ setAuthMode('login'); });
