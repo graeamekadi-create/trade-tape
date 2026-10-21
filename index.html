@@ -161,20 +161,10 @@
   .alert-row-del:hover{color:var(--loss);border-color:var(--loss)}
   .alerts-empty{font-size:13px;color:var(--ink-400);padding:4px 2px}
 
-  /* alerts as a compact floating side window: no dimming, app stays usable behind it */
-  #alertsOverlay{background:transparent;pointer-events:none;align-items:flex-start;padding:14px}
-  #alertsOverlay .drawer{pointer-events:auto;width:min(350px,100%);height:auto;max-height:calc(100vh - 28px);border-radius:14px;border:1px solid var(--border-strong);box-shadow:0 14px 44px var(--shadow);padding:16px 16px 20px}
-  #alertsOverlay .drawer-head{margin-bottom:12px}
-  #alertsOverlay .drawer-head h2{font-size:16px}
-  #alertsOverlay .alerts-box{padding:12px 13px;margin-bottom:12px}
-  #alertsOverlay .alerts-list-title{margin:14px 0 6px}
-  @media (max-width:700px){
-    #alertsOverlay{background:rgba(10,12,15,.42);pointer-events:auto;align-items:stretch;padding:0}
-    #alertsOverlay .drawer{width:100%;height:100%;max-height:none;border-radius:0;border:none}
-  }
+  /* alerts popup: same modal as the rest; "pop out" opens it alone in a small browser window */
   body.standalone #appRoot{display:none!important}
-  body.standalone #alertsOverlay{background:var(--surface-raised);pointer-events:auto;align-items:stretch;padding:0}
-  body.standalone #alertsOverlay .drawer{width:100%;height:100%;max-height:none;border-radius:0;border:none;box-shadow:none}
+  body.standalone #alertsOverlay{background:var(--surface-raised);backdrop-filter:none;padding:0;align-items:stretch}
+  body.standalone #alertsOverlay .drawer{width:100%;max-width:none;height:100%;max-height:none;border-radius:0;border:none;box-shadow:none;animation:none}
   body.standalone #closeAlerts, body.standalone #alertsPopoutBtn{display:none}
 
   .mkt-field{position:relative}
@@ -392,11 +382,21 @@
   @media (max-width:600px){ .cal-month-grid{grid-template-columns:repeat(3,minmax(0,1fr))} }
 
   /* ---------- Modal / drawer ---------- */
-  .overlay{position:fixed;inset:0;background:rgba(10,12,15,.42);display:none;align-items:stretch;justify-content:flex-end;z-index:50}
+  /* ---------- modal pop-ups (centered card, blurred backdrop, fixed title bar, always-visible actions) ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(5,9,18,.66);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .overlay.open{display:flex}
-  .drawer{width:min(480px,100%);background:var(--surface-raised);height:100%;overflow-y:auto;padding:26px 26px 40px;box-shadow:-8px 0 24px var(--shadow)}
-  .drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-  .drawer-head h2{font-size:19px}
+  .drawer{--mp-y:22px;--mp-x:24px;width:min(520px,100%);max-height:min(88vh,780px);background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:16px;overflow-y:auto;overscroll-behavior:contain;padding:var(--mp-y) var(--mp-x);box-shadow:0 24px 60px rgba(0,0,0,.55);animation:modal-in .22s cubic-bezier(.22,1,.36,1)}
+  #detailOverlay .drawer{width:min(640px,100%)}
+  @keyframes modal-in{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+  body:has(.overlay.open){overflow:hidden}
+  .drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:calc(var(--mp-y) * -1);z-index:3;margin:calc(var(--mp-y) * -1) calc(var(--mp-x) * -1) 18px;padding:16px var(--mp-x) 13px;background:var(--surface-raised);border-bottom:1px solid var(--border)}
+  .drawer-head h2{font-size:18px}
+  @media (max-width:700px){
+    .overlay{align-items:flex-end;padding:0}
+    .drawer,#detailOverlay .drawer{width:100%;max-height:92vh;border-radius:18px 18px 0 0;border-bottom:none;animation:sheet-in .26s cubic-bezier(.22,1,.36,1)}
+    @keyframes sheet-in{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+  }
+  @media (prefers-reduced-motion:reduce){ .drawer{animation:none!important} }
   .close-btn{background:none;border:none;color:var(--ink-400);width:30px;height:30px;border-radius:8px}
   .close-btn:hover{background:var(--surface-sunken);color:var(--ink-900)}
 
@@ -420,6 +420,12 @@
   .outcome-seg button[data-outcome="loss"].active{background:var(--loss-soft);border-color:var(--loss);color:var(--loss)}
   .drawer-actions{display:flex;gap:8px;margin-top:20px}
   .drawer-actions .btn{flex:1;text-align:center}
+  .overlay .drawer .drawer-actions{position:sticky;bottom:calc(var(--mp-y) * -1);z-index:3;margin:20px calc(var(--mp-x) * -1) calc(var(--mp-y) * -1);padding:13px var(--mp-x);background:var(--surface-raised);border-top:1px solid var(--border)}
+  .overlay .drawer .alerts-box .drawer-actions{position:static;margin:12px 0 0;padding:0;border-top:none;background:none}
+  .confirm-card{width:min(400px,100%)}
+  .confirm-card p{font-size:14px;line-height:1.55;color:var(--ink-600);margin:0}
+  .btn.danger-fill{background:var(--loss);border-color:var(--loss);color:#fff}
+  .btn.danger-fill:hover{filter:brightness(1.1)}
 
   /* ---------- Trade detail view ---------- */
   .detail-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
@@ -892,7 +898,7 @@
 </div>
 
 <div class="overlay" id="tradeOverlay">
-  <div class="drawer">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
     <div class="drawer-head">
       <h2 id="drawerTitle">New trade</h2>
       <button class="close-btn" id="closeDrawer">
@@ -961,7 +967,7 @@
 </div>
 
 <div class="overlay" id="detailOverlay">
-  <div class="drawer">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
     <div class="drawer-head">
       <h2 id="detailTitle">Trade</h2>
       <button class="close-btn" id="closeDetail">
@@ -974,7 +980,7 @@
 <input type="file" id="detailShotFile" accept="image/*" style="display:none">
 
 <div class="overlay" id="dayDetailOverlay">
-  <div class="drawer">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="dayDetailTitle">
     <div class="drawer-head">
       <h2 id="dayDetailTitle">Day</h2>
       <button class="close-btn" id="closeDayDetail">
@@ -986,9 +992,9 @@
 </div>
 
 <div class="overlay" id="alertsOverlay">
-  <div class="drawer">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="alertsTitle">
     <div class="drawer-head">
-      <h2>Price alerts</h2>
+      <h2 id="alertsTitle">Price alerts</h2>
       <div style="display:flex;gap:4px">
         <button class="close-btn" id="alertsPopoutBtn" title="Open in a small separate window" aria-label="Open in a small separate window">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9 2h5v5M14 2L7.5 8.5M12 9.5V13a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1029,6 +1035,17 @@
     <div id="alertsActive"></div>
     <div class="alerts-list-title">Recently triggered</div>
     <div id="alertsTriggered"></div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay" style="z-index:60">
+  <div class="drawer confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+    <div class="drawer-head"><h2 id="confirmTitle">Are you sure?</h2></div>
+    <p id="confirmMsg"></p>
+    <div class="drawer-actions">
+      <button type="button" class="btn" id="confirmCancel">Cancel</button>
+      <button type="button" class="btn primary" id="confirmOk">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -2157,7 +2174,7 @@
     } else { preview.value=''; }
   }
   async function deleteTrade(id){
-    if(!confirm('Delete this trade? This can\'t be undone.')) return;
+    if(!(await confirmDialog('This trade will be permanently deleted. This can\'t be undone.', {title:'Delete this trade?', okLabel:'Delete', danger:true}))) return;
     var res = await sb.from('trades').delete().eq('id', id);
     if(res.error){ toast('Could not delete: '+res.error.message, 'loss'); return; }
     await loadTrades();
@@ -2247,7 +2264,7 @@
         btn.addEventListener('click', async function(e){
           e.stopPropagation();
           var id = btn.getAttribute('data-remove-shot');
-          if(!confirm('Remove this screenshot?')) return;
+          if(!(await confirmDialog('This screenshot will be removed from the trade.', {title:'Remove screenshot?', okLabel:'Remove', danger:true}))) return;
           var res = await sb.from('trade_screenshots').delete().eq('id', id);
           if(res.error){ toast('Could not remove screenshot: '+res.error.message, 'loss'); return; }
           detailScreenshots = detailScreenshots.filter(function(s){ return s.id!==id; });
@@ -2700,6 +2717,50 @@
     }
     btn.disabled = false;
   }
+  function confirmDialog(message, opts){
+    opts = opts || {};
+    return new Promise(function(resolve){
+      var ov = document.getElementById('confirmOverlay');
+      var ok = document.getElementById('confirmOk');
+      var cancel = document.getElementById('confirmCancel');
+      document.getElementById('confirmTitle').textContent = opts.title || 'Are you sure?';
+      document.getElementById('confirmMsg').textContent = message;
+      ok.textContent = opts.okLabel || 'Confirm';
+      ok.className = 'btn ' + (opts.danger ? 'danger-fill' : 'primary');
+      function done(v){
+        ov.classList.remove('open');
+        ok.removeEventListener('click', onOk);
+        cancel.removeEventListener('click', onCancel);
+        ov.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey, true);
+        resolve(v);
+      }
+      function onOk(){ done(true); }
+      function onCancel(){ done(false); }
+      function onBackdrop(e){ if(e.target===ov) done(false); }
+      function onKey(e){ if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); done(false); } }
+      ok.addEventListener('click', onOk);
+      cancel.addEventListener('click', onCancel);
+      ov.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey, true);
+      ov.classList.add('open');
+      (opts.danger ? cancel : ok).focus();
+    });
+  }
+  function wireEscapeToClose(){
+    var closers = [
+      ['dayDetailOverlay', function(){ closeDayDetail(); }],
+      ['detailOverlay', function(){ closeTradeDetail(); }],
+      ['tradeOverlay', function(){ closeTradeForm(); }],
+      ['alertsOverlay', function(){ if(!document.body.classList.contains('standalone')) closeAlerts(); }]
+    ];
+    document.addEventListener('keydown', function(e){
+      if(e.key!=='Escape') return;
+      for(var i=0;i<closers.length;i++){
+        if(document.getElementById(closers[i][0]).classList.contains('open')){ closers[i][1](); return; }
+      }
+    });
+  }
   function wireAlerts(){
     ['alertsBtnTop','alertsBtnSide'].forEach(function(id){
       var b = document.getElementById(id);
@@ -2710,9 +2771,7 @@
     document.getElementById('alertForm').addEventListener('submit', submitAlert);
     wireMarketSearch();
     document.getElementById('alertsPopoutBtn').addEventListener('click', popOutAlerts);
-    document.addEventListener('keydown', function(e){
-      if(e.key==='Escape' && !document.body.classList.contains('standalone') && document.getElementById('alertsOverlay').classList.contains('open')) closeAlerts();
-    });
+    wireEscapeToClose();
     document.getElementById('pushEnableBtn').addEventListener('click', enablePush);
     document.getElementById('pushTestBtn').addEventListener('click', testPush);
     document.getElementById('alertsOverlay').addEventListener('click', async function(e){
@@ -2982,7 +3041,7 @@
       try{
         var parsed = JSON.parse(reader.result);
         if(!parsed || !Array.isArray(parsed.trades)) throw new Error('bad shape');
-        if(!confirm('Import '+parsed.trades.length+' trade(s) into your account? Your goal settings will also be updated if present.')) return;
+        if(!(await confirmDialog(parsed.trades.length+' trade(s) will be added to your account. Your goal settings will also be updated if the file includes them.', {title:'Import trades?', okLabel:'Import'}))) return;
         var rows = parsed.trades.map(function(t){
           return {
             user_id: currentUser.id, date:t.date, symbol:t.symbol, side:t.side,
@@ -3514,7 +3573,7 @@
       }, 256);
     });
     document.getElementById('clearAllBtn').addEventListener('click', async function(){
-      if(!confirm('This deletes every trade you\'ve logged. Your account and goal stay intact. Continue?')) return;
+      if(!(await confirmDialog('This deletes every trade you\'ve logged. Your account and goal stay intact.', {title:'Delete all your trades?', okLabel:'Delete everything', danger:true}))) return;
       var res = await sb.from('trades').delete().eq('user_id', currentUser.id);
       if(res.error){ toast('Could not clear trades: '+res.error.message, 'loss'); return; }
       await loadTrades();
