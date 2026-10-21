@@ -42,6 +42,9 @@
   }
 
   *,*::before,*::after{box-sizing:border-box}
+  /* scrollbars hidden everywhere; content still scrolls by touch, wheel, trackpad and keyboard */
+  *{scrollbar-width:none;-ms-overflow-style:none}
+  *::-webkit-scrollbar{display:none;width:0;height:0}
   body{
     margin:0;background:var(--surface);color:var(--ink-900);
     font-family:var(--font-body);font-size:14px;line-height:1.5;
@@ -385,8 +388,8 @@
   /* ---------- modal pop-ups (centered card, blurred backdrop, fixed title bar, always-visible actions) ---------- */
   .overlay{position:fixed;inset:0;background:rgba(5,9,18,.66);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .overlay.open{display:flex}
-  .drawer{--mp-y:22px;--mp-x:24px;width:min(520px,100%);max-height:min(88vh,780px);background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:16px;overflow-y:auto;overscroll-behavior:contain;padding:var(--mp-y) var(--mp-x);box-shadow:0 24px 60px rgba(0,0,0,.55);animation:modal-in .22s cubic-bezier(.22,1,.36,1)}
-  #detailOverlay .drawer{width:min(640px,100%)}
+  .drawer{--mp-y:22px;--mp-x:28px;width:min(720px,100%);max-height:min(88vh,780px);background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:16px;overflow-y:auto;overscroll-behavior:contain;padding:var(--mp-y) var(--mp-x);box-shadow:0 24px 60px rgba(0,0,0,.55);animation:modal-in .22s cubic-bezier(.22,1,.36,1)}
+  #detailOverlay .drawer{width:min(860px,100%)}
   @keyframes modal-in{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
   body:has(.overlay.open){overflow:hidden}
   .drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:calc(var(--mp-y) * -1);z-index:3;margin:calc(var(--mp-y) * -1) calc(var(--mp-x) * -1) 18px;padding:16px var(--mp-x) 13px;background:var(--surface-raised);border-bottom:1px solid var(--border)}
@@ -1188,6 +1191,7 @@
   function switchTab(id){
     stopSlideshow();
     activeTab = id;
+    try{ localStorage.setItem('tt_tab', id); }catch(e){ /* storage unavailable */ }
     document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
     document.getElementById('view-'+id).classList.add('active');
     renderNav();
@@ -3169,6 +3173,7 @@
     document.getElementById('authMsg').className = 'auth-msg';
   }
 
+  var enteredUserId = null, enteringUserId = null;
   async function enterApp(user){
     currentUser = user;
     document.getElementById('authScreen').style.display = 'none';
@@ -3197,8 +3202,13 @@
     document.getElementById('appLoading').style.display = 'none';
     document.getElementById('appRoot').classList.add('open');
     renderSidebarUser();
-    activeTab = 'overview';
-    switchTab('overview');
+    var startTab = 'overview';
+    try{
+      var savedTab = localStorage.getItem('tt_tab');
+      if(savedTab && TABS.some(function(t){ return t.id===savedTab; })) startTab = savedTab;
+    }catch(e){ /* storage unavailable */ }
+    activeTab = startTab;
+    switchTab(startTab);
   }
 
   /* ===================== product tour ===================== */
@@ -3593,8 +3603,27 @@
       }
       document.getElementById('recoveryScreen').style.display = 'none';
       if(session && session.user){
-        enterApp(session.user);
+        // The auth library re-announces the same session whenever the tab regains focus
+        // or the token refreshes; only a different user should trigger a full app start.
+        if(session.user.id === enteredUserId || session.user.id === enteringUserId){
+          currentUser = session.user;
+          return;
+        }
+        enteringUserId = session.user.id;
+        enterApp(session.user).then(function(){
+          enteredUserId = session.user.id;
+        }).catch(function(){
+          document.getElementById('appLoading').style.display = 'none';
+          document.getElementById('authScreen').style.display = 'flex';
+          var m = document.getElementById('authMsg');
+          m.className = 'auth-msg error';
+          m.textContent = friendlyAuthError('Failed to fetch');
+        }).then(function(){
+          enteringUserId = null;
+        });
       } else {
+        enteredUserId = null;
+        enteringUserId = null;
         currentUser = null;
         document.getElementById('appLoading').style.display = 'none';
         document.getElementById('appRoot').classList.remove('open');
