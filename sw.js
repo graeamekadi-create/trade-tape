@@ -20,17 +20,23 @@ self.addEventListener('push', (event) => {
   } catch (e) {
     data = { body: event.data ? event.data.text() : '' };
   }
-  event.waitUntil(
+  const rising = data.direction === 'above';
+  event.waitUntil(Promise.all([
     self.registration.showNotification(data.title || 'Price alert', {
       body: data.body || '',
       icon: 'icon-192.png',
       badge: 'icon-192.png',
       tag: data.tag || 'price-alert',
+      renotify: true,
+      silent: false,
       data: { url: data.url || '/' },
       requireInteraction: true,
-      vibrate: [200, 100, 200]
+      vibrate: rising ? [120, 60, 120, 60, 240] : [400, 120, 200]
+    }),
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      list.forEach((c) => c.postMessage({ type: 'price-alert', direction: data.direction, title: data.title, body: data.body }));
     })
-  );
+  ]));
 });
 
 self.addEventListener('notificationclick', (event) => {

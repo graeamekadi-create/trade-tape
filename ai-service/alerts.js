@@ -108,6 +108,7 @@ function createAlertWatcher({ supabase, sendPush, log }) {
         title: `${name} hit ${alert.target}`,
         body: `${name} is now ${quote}. Your ${alert.direction === 'above' ? 'above' : 'below'} ${alert.target} alert triggered.`,
         tag: `alert-${alert.id}`,
+        direction: alert.direction,
         url: '/'
       });
       log.log(`alert ${alert.id} fired (${alert.symbol} ${alert.direction} ${alert.target} @ ${quote}), delivered to ${delivered} device(s)`);

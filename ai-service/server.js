@@ -475,6 +475,7 @@ app.post('/push/test', requireAlerts, async (req, res) => {
       title: 'Trade Tape notifications are on',
       body: 'You will get a message like this when a price alert triggers.',
       tag: 'push-test',
+      direction: 'above',
       url: '/'
     });
     if (!delivered) return res.status(404).json({ error: 'No device is subscribed for this account yet.' });
