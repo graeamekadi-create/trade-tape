@@ -161,6 +161,31 @@
   .alert-row-del:hover{color:var(--loss);border-color:var(--loss)}
   .alerts-empty{font-size:13px;color:var(--ink-400);padding:4px 2px}
 
+  /* alerts as a compact floating side window: no dimming, app stays usable behind it */
+  #alertsOverlay{background:transparent;pointer-events:none;align-items:flex-start;padding:14px}
+  #alertsOverlay .drawer{pointer-events:auto;width:min(350px,100%);height:auto;max-height:calc(100vh - 28px);border-radius:14px;border:1px solid var(--border-strong);box-shadow:0 14px 44px var(--shadow);padding:16px 16px 20px}
+  #alertsOverlay .drawer-head{margin-bottom:12px}
+  #alertsOverlay .drawer-head h2{font-size:16px}
+  #alertsOverlay .alerts-box{padding:12px 13px;margin-bottom:12px}
+  #alertsOverlay .alerts-list-title{margin:14px 0 6px}
+  @media (max-width:700px){
+    #alertsOverlay{background:rgba(10,12,15,.42);pointer-events:auto;align-items:stretch;padding:0}
+    #alertsOverlay .drawer{width:100%;height:100%;max-height:none;border-radius:0;border:none}
+  }
+  body.standalone #appRoot{display:none!important}
+  body.standalone #alertsOverlay{background:var(--surface-raised);pointer-events:auto;align-items:stretch;padding:0}
+  body.standalone #alertsOverlay .drawer{width:100%;height:100%;max-height:none;border-radius:0;border:none;box-shadow:none}
+  body.standalone #closeAlerts, body.standalone #alertsPopoutBtn{display:none}
+
+  .mkt-field{position:relative}
+  .mkt-list{position:absolute;left:0;right:0;top:100%;z-index:5;margin-top:4px;max-height:230px;overflow-y:auto;background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 10px 28px var(--shadow);padding:4px}
+  .mkt-list[hidden]{display:none}
+  .mkt-group{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-400);padding:8px 8px 4px}
+  .mkt-item{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:var(--ink-900);padding:8px 9px;border-radius:7px;font-size:13px;cursor:pointer}
+  .mkt-item:hover,.mkt-item.active{background:var(--accent-soft)}
+  .mkt-sub{font-size:10.5px;color:var(--ink-400);white-space:nowrap}
+  .mkt-none{padding:12px 10px;font-size:12.5px;color:var(--ink-400)}
+
   .sidebar-stat{
     padding:14px;border-radius:10px;background:var(--surface-sunken);
     display:flex;flex-direction:column;gap:3px;
@@ -964,9 +989,14 @@
   <div class="drawer">
     <div class="drawer-head">
       <h2>Price alerts</h2>
-      <button class="close-btn" id="closeAlerts">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>
+      <div style="display:flex;gap:4px">
+        <button class="close-btn" id="alertsPopoutBtn" title="Open in a small separate window" aria-label="Open in a small separate window">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9 2h5v5M14 2L7.5 8.5M12 9.5V13a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="close-btn" id="closeAlerts" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
     </div>
     <div class="alerts-msg" id="alertsServiceMsg"></div>
 
@@ -981,9 +1011,11 @@
 
     <form id="alertForm" class="alerts-box">
       <div class="alerts-box-title">New alert</div>
-      <div class="field">
-        <label for="alertSymbol">Market</label>
-        <select id="alertSymbol"><option>Loading markets…</option></select>
+      <div class="field mkt-field">
+        <label for="alertSearch">Market</label>
+        <input type="search" id="alertSearch" placeholder="Search e.g. V75, EURUSD, BTC, gold" autocomplete="off" spellcheck="false" aria-controls="alertMarketList">
+        <input type="hidden" id="alertSymbol">
+        <div class="mkt-list" id="alertMarketList" role="listbox" hidden></div>
       </div>
       <div class="field" style="margin-bottom:6px">
         <label for="alertTarget">Notify me when the price reaches</label>
@@ -2415,25 +2447,125 @@
     document.getElementById('alertsOverlay').classList.remove('open');
     clearInterval(alertsTimer);
   }
+  function normMkt(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  var MKT_NICKNAMES = {
+    ndx:'nas100 nasdaq nas ustech100', dji:'us30 dow dowjones wallstreet30', spc:'us500 spx sp500',
+    ftse:'uk100 ftse100', gdaxi:'ger40 dax de40 germany40', n225:'jp225 nikkei', as51:'aus200 asx',
+    hsi:'hk50 hangseng', fchi:'fra40 cac40', sx5e:'eu50 eurostoxx', ssmi:'swi20', aex:'nld25',
+    btcusd:'bitcoin', ethusd:'ethereum', xauusd:'gold', xagusd:'silver', xptusd:'platinum', xpdusd:'palladium'
+  };
+  function mktSearchKey(s){
+    var clean = normMkt(String(s.symbol||'').replace(/^(frx|cry|OTC_)/i,''));
+    var keys = [normMkt(s.name), clean, normMkt(s.marketName)];
+    if(MKT_NICKNAMES[clean]) keys.push(MKT_NICKNAMES[clean]);
+    var m = /^Volatility (\d+)( \(1s\))? Index$/i.exec(s.name || '');
+    if(m) keys.push('v'+m[1]+(m[2]?'1s':''), 'vol'+m[1], 'r'+m[1]);
+    return keys.join(' ');
+  }
+  function filterMarkets(query){
+    var tokens = String(query||'').split(/\s+/).map(normMkt).filter(Boolean);
+    var items = alertSymbols.filter(function(s){
+      var key = mktSearchKey(s);
+      return tokens.every(function(t){ return key.indexOf(t)!==-1; });
+    });
+    return {tokens:tokens, items:items};
+  }
+  function renderMarketList(query){
+    var list = document.getElementById('alertMarketList');
+    var r = filterMarkets(query);
+    if(!r.items.length){
+      list.innerHTML = '<div class="mkt-none">No market matches “'+esc(query)+'”.</div>';
+      return;
+    }
+    var itemHTML = function(s, showSub){
+      return '<button type="button" class="mkt-item" role="option" data-sym="'+esc(s.symbol)+'"><span>'+esc(s.name)+(s.open?'':' (closed)')+'</span>'+(showSub?'<span class="mkt-sub">'+esc(s.marketName)+'</span>':'')+'</button>';
+    };
+    var html = '';
+    if(!r.tokens.length){
+      var groups = {};
+      r.items.forEach(function(s){ (groups[s.marketName] = groups[s.marketName] || []).push(s); });
+      Object.keys(groups).sort(function(a,b){
+        var ia = ALERT_GROUP_ORDER.indexOf(a), ib = ALERT_GROUP_ORDER.indexOf(b);
+        return (ia<0?99:ia) - (ib<0?99:ib);
+      }).forEach(function(g){
+        html += '<div class="mkt-group">'+esc(g)+'</div>'+groups[g].map(function(s){ return itemHTML(s,false); }).join('');
+      });
+    } else {
+      var first = r.tokens[0];
+      var rank = function(s){
+        var words = mktSearchKey(s).split(' ');
+        if(words.some(function(k){ return k===first; })) return 0;
+        if(words.some(function(k){ return k.indexOf(first)===0; })) return 1;
+        return 2;
+      };
+      var ranked = r.items.slice().sort(function(a,b){ return rank(a) - rank(b); });
+      html = ranked.slice(0, 60).map(function(s){ return itemHTML(s,true); }).join('');
+    }
+    list.innerHTML = html;
+  }
+  function selectAlertSymbol(sym){
+    var meta = alertSymbols.filter(function(s){ return s.symbol===sym; })[0];
+    if(!meta) return;
+    document.getElementById('alertSymbol').value = sym;
+    document.getElementById('alertSearch').value = meta.name;
+    document.getElementById('alertMarketList').hidden = true;
+    document.getElementById('alertLive').textContent = 'Current price: …';
+    pollAlertPrice();
+  }
+  function wireMarketSearch(){
+    var search = document.getElementById('alertSearch');
+    var list = document.getElementById('alertMarketList');
+    var hidden = document.getElementById('alertSymbol');
+    function restoreName(){
+      var meta = alertSymbols.filter(function(s){ return s.symbol===hidden.value; })[0];
+      if(meta) search.value = meta.name;
+    }
+    search.addEventListener('focus', function(){
+      if(!alertSymbols.length) return;
+      search.select();
+      renderMarketList('');
+      list.hidden = false;
+    });
+    search.addEventListener('input', function(){
+      if(!alertSymbols.length) return;
+      renderMarketList(search.value);
+      list.hidden = false;
+    });
+    search.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        var firstItem = list.querySelector('.mkt-item');
+        if(!list.hidden && firstItem) selectAlertSymbol(firstItem.getAttribute('data-sym'));
+      } else if(e.key==='Escape' && !list.hidden){
+        e.stopPropagation();
+        list.hidden = true;
+        restoreName();
+      }
+    });
+    list.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    list.addEventListener('click', function(e){
+      var item = e.target.closest('.mkt-item');
+      if(item) selectAlertSymbol(item.getAttribute('data-sym'));
+    });
+    document.addEventListener('click', function(e){
+      if(e.target.closest('.mkt-field')) return;
+      if(!list.hidden){ list.hidden = true; restoreName(); }
+    });
+  }
+  function popOutAlerts(){
+    var url = window.location.origin + window.location.pathname + '?panel=alerts';
+    var w = window.open(url, 'tt-alerts', 'popup=yes,width=380,height=720');
+    if(!w){ toast('Your browser blocked the pop-up. Allow pop-ups for this site and try again.', 'loss'); return; }
+    closeAlerts();
+  }
   async function loadAlertSymbols(){
     if(alertSymbols.length){ setAlertsMsg(''); return; }
     try{
       var data = await aiGet('/alerts/symbols');
       alertSymbols = data.symbols || [];
       if(!alertSymbols.length) throw new Error('No markets came back');
-      var sel = document.getElementById('alertSymbol');
-      var groups = {};
-      alertSymbols.forEach(function(s){ (groups[s.marketName] = groups[s.marketName] || []).push(s); });
-      var names = Object.keys(groups).sort(function(a,b){
-        var ia = ALERT_GROUP_ORDER.indexOf(a), ib = ALERT_GROUP_ORDER.indexOf(b);
-        return (ia<0?99:ia) - (ib<0?99:ib);
-      });
-      sel.innerHTML = names.map(function(g){
-        return '<optgroup label="'+esc(g)+'">'+groups[g].map(function(s){
-          return '<option value="'+esc(s.symbol)+'">'+esc(s.name)+(s.open?'':' (closed)')+'</option>';
-        }).join('')+'</optgroup>';
-      }).join('');
-      if(alertSymbols.some(function(s){ return s.symbol==='R_10'; })) sel.value = 'R_10';
+      var preferred = alertSymbols.filter(function(s){ return s.symbol==='R_10'; })[0] || alertSymbols[0];
+      selectAlertSymbol(preferred.symbol);
       setAlertsMsg('');
     }catch(err){
       setAlertsMsg('Could not reach the alert service: '+err.message+'. Close this and try again in a moment.', true);
@@ -2576,9 +2708,10 @@
     document.getElementById('closeAlerts').addEventListener('click', closeAlerts);
     document.getElementById('alertsOverlay').addEventListener('click', function(e){ if(e.target.id==='alertsOverlay') closeAlerts(); });
     document.getElementById('alertForm').addEventListener('submit', submitAlert);
-    document.getElementById('alertSymbol').addEventListener('change', function(){
-      document.getElementById('alertLive').textContent = 'Current price: …';
-      pollAlertPrice();
+    wireMarketSearch();
+    document.getElementById('alertsPopoutBtn').addEventListener('click', popOutAlerts);
+    document.addEventListener('keydown', function(e){
+      if(e.key==='Escape' && !document.body.classList.contains('standalone') && document.getElementById('alertsOverlay').classList.contains('open')) closeAlerts();
     });
     document.getElementById('pushEnableBtn').addEventListener('click', enablePush);
     document.getElementById('pushTestBtn').addEventListener('click', testPush);
@@ -2994,6 +3127,13 @@
     await finishEnteringApp();
   }
   async function finishEnteringApp(){
+    if(new URLSearchParams(window.location.search).get('panel')==='alerts'){
+      document.body.classList.add('standalone');
+      document.title = 'Price alerts';
+      document.getElementById('appLoading').style.display = 'none';
+      openAlerts();
+      return;
+    }
     await loadAllData();
     document.getElementById('appLoading').style.display = 'none';
     document.getElementById('appRoot').classList.add('open');
